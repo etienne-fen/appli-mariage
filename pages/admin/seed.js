@@ -84,8 +84,8 @@ function Seed() {
 
       <SeedBlock
         title="Events"
-        description="The 5 RSVP segments (ceremony → brunch)."
-        items={EVENT_SEEDS.map(e => `${e.title.FR} / ${e.title.EN} — ${e.day.FR} ${e.timeStart}`)}
+        description="RSVP segments. 🔒 = Friday invitees only. Re-seeding overwrites times/locations edited in Firestore."
+        items={EVENT_SEEDS.map(e => `${e.audience === 'friday' ? '🔒 ' : ''}${e.title.FR} / ${e.title.EN} — ${e.day.FR} ${e.timeStart}`)}
         onSeed={handleSeedEvents}
         busy={eventsBusy}
         status={eventsStatus}

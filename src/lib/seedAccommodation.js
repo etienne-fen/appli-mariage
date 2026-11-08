@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'
 import { firestore } from '../firebase/firebaseClient'
+import { syncAudiencePhones } from './access'
 
 // Imports a { chambres, personnes, foyers } export (see docs/data-model.md and
 // docs/seed-example.json for the expected shape) into the rooms/persons/households
@@ -71,6 +72,9 @@ export async function importAccommodation({ chambres = [], personnes = [], foyer
       })
     }
   }))
+
+  // managerPhones may have changed → refresh the Friday invitees' phone list.
+  await syncAudiencePhones('friday')
 
   return summary
 }

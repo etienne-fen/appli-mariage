@@ -9,6 +9,7 @@ const strings = {
     phone:        'Tél.',
     email:        'Email',
     bookNow:      'Réserver',
+    fridayTitle:  'Vendredi soir — sur invitation',
   },
   EN: {
     hub:          'Wedding info',
@@ -20,6 +21,7 @@ const strings = {
     phone:        'Tel.',
     email:        'Email',
     bookNow:      'Book',
+    fridayTitle:  'Friday night — by invitation',
   },
 }
 

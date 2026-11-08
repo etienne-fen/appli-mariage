@@ -12,6 +12,8 @@
 //   node scripts/firestore.js set    <collection/docId> '<json>' | @file.json
 //   node scripts/firestore.js update <collection/docId> '<json>' | @file.json   (merge, dotted keys ok)
 //   node scripts/firestore.js delete <collection/docId>
+//   node scripts/firestore.js friday list | sync | add <householdId> | remove <householdId>
+//     (invitation-only Friday events; keeps access/friday.phones in sync)
 
 const fs = require('fs');
 const os = require('os');
@@ -73,9 +75,41 @@ async function main() {
       await db.doc(target).delete();
       console.log(`deleted ${target}`);
       break;
+    case 'friday':
+      await friday(target, payload);
+      break;
     default:
-      console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 15).join('\n'));
+      console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 17).join('\n'));
   }
+}
+
+// access/friday = { householdIds (source of truth), phones (derived from their managerPhones) }
+async function friday(action, householdId) {
+  const ref = db.doc('access/friday');
+  const snap = await ref.get();
+  let ids = snap.exists ? snap.data().householdIds ?? [] : [];
+
+  if (action === 'add' || action === 'remove') {
+    if (!householdId) throw new Error('Missing householdId');
+    if (action === 'add') {
+      if (!(await db.doc(`households/${householdId}`).get()).exists) throw new Error(`No household ${householdId}`);
+      ids = [...new Set([...ids, householdId])];
+    } else {
+      ids = ids.filter((id) => id !== householdId);
+    }
+  } else if (action !== 'sync' && action !== 'list') {
+    throw new Error('Usage: friday list | sync | add <householdId> | remove <householdId>');
+  }
+
+  const households = await Promise.all(ids.map((id) => db.doc(`households/${id}`).get()));
+  if (action !== 'list') {
+    const phones = [...new Set(households.flatMap((h) => (h.exists ? h.data().managerPhones ?? [] : [])))];
+    await ref.set({ householdIds: ids, phones });
+  }
+  households.forEach((h) =>
+    console.log(`${h.id}\t${h.exists ? h.data().displayName || '' : '(missing household!)'}\t${(h.exists && h.data().managerPhones || []).length} phone(s)`)
+  );
+  console.log(`${ids.length} household(s) invited on Friday`);
 }
 
 main().catch((e) => {

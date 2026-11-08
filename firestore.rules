@@ -12,15 +12,34 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    // Invitation-only content (e.g. the Friday-night programme).
+    // access/{audience} = { householdIds: [...], phones: [...] } where phones is
+    // DERIVED from those households' managerPhones (see scripts/firestore.js
+    // `friday sync`). Guests can never read this doc, so the guest list of an
+    // audience stays private.
+    function isInAudience(audience) {
+      return isSignedIn()
+        && request.auth.token.phone_number in
+           get(/databases/$(database)/documents/access/$(audience)).data.phones;
+    }
+
+    function isFridayGuest() {
+      return isInAudience('friday');
+    }
+
     match /admins/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow write: if false; // manage via Firebase console only
     }
 
+    match /access/{audience} {
+      allow read, write: if isAdmin();
+    }
+
     match /info/{sectionId} {
-      allow read: if true; // public — no auth required
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      // public — except the Friday programme, invited households only
+      allow read: if sectionId != 'schedule-friday' || isFridayGuest() || isAdmin();
+      allow write: if isAdmin();
     }
 
     match /rooms/{roomId} {
@@ -48,10 +67,25 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isSignedIn() && request.auth.uid == guestId);
     }
 
+    // Every event has audience "all" or "friday". Clients must query with
+    // where('audience', '==', ...) — an unfiltered query is rejected.
     match /events/{eventId} {
-      allow read: if true;
-      allow create, update: if isSignedIn(); // locked to isAdmin() once admin claim is set up
-      allow delete: if isAdmin();
+      allow read: if resource.data.audience == 'all'
+        || (resource.data.audience == 'friday' && isFridayGuest())
+        || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Answers to invitation-only events live here rather than in
+    // persons.attendance, because persons are readable by every guest.
+    // fridayRsvps/{personId} = { householdId, attendance: { [eventId]: bool|null } }
+    match /fridayRsvps/{personId} {
+      allow read: if isFridayGuest() || isAdmin();
+      allow write: if isAdmin() || (isFridayGuest()
+        && request.resource.data.householdId ==
+           get(/databases/$(database)/documents/persons/$(personId)).data.householdId
+        && request.auth.token.phone_number in
+           get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.managerPhones);
     }
 
     match /photos/{photoId} {

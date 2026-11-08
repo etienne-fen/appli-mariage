@@ -76,23 +76,42 @@ rooms/{roomId}                  — slug `batiment-niveau-chambre`
 
 info/{sectionId}                — public content pages (no auth required to read)
   sectionId: schedule | dresscode | accommodation | faq | contact
-  FR: { ...section-specific fields... }
-  EN: { ...section-specific fields... }
+             + schedule-friday (Friday invitees only, shown under the Programme)
+  FR: string                   — HTML from the rich-text editor
+  EN: string
   // Edit content directly in Firestore console — no redeployment needed
   // Seed structure defined in src/lib/seedInfo.js
 
-events/{eventId}                — fixed IDs: ceremony|cocktail|dinner|party|brunch
+events/{eventId}                — public: ceremony|cocktail|dinner|party|brunch
+                                  friday-only: friday-dinner|saturday-breakfast|saturday-lunch
+  audience: "all" | "friday"   — REQUIRED; rules hide docs without it. Clients must query
+                                 where('audience','==',…) (unfiltered queries are rejected)
   title: { FR, EN }            — bilingual label
   day:   { FR, EN }            — e.g. "Samedi" / "Saturday"
   timeStart: string            — "HH:MM"
   location: string
-  order: number                — sort key
+  order: number                — sort key (decimals ok; sorted client-side, no index)
+
+access/{audience}               — invitation lists, admin-only (guests can never read)
+  householdIds: string[]       — source of truth: invited households
+  phones: string[]             — DERIVED from those households' managerPhones; used by rules.
+                                 Resync after any managerPhones change
+                                 (`node scripts/firestore.js friday sync`; import does it too)
+
+fridayRsvps/{personId}          — answers to audience:"friday" events, readable by invitees only
+  householdId: string
+  attendance: { [eventId]: true | false | null }
 
 photos/{photoId}                — storagePath + guestId + eventId + status (pending/approved/rejected)
 notes/{noteId}                  — guestbook entries; guestId + content + createdAt
 ```
 
 Meal preferences and RSVP attendance live directly on each `persons` doc (see above) —
-there are no separate `meals`/`rsvps` collections. Import via the "Accommodation" block
+there are no separate `meals`/`rsvps` collections. Exception: answers to Friday-only
+events go to `fridayRsvps`, because `persons` is readable by every signed-in guest and
+must never reveal who is invited on Friday.
+
+**Invitation-only content rule:** anything for a restricted audience must be unreadable
+by others at the security-rules level, not just hidden in the UI. Import via the "Accommodation" block
 on `/admin/seed`, using `src/lib/seedAccommodation.js` (idempotent; re-importing never
 overwrites `mealPreferences`/`attendance` already saved by a guest).

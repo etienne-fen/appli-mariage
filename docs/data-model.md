@@ -105,6 +105,22 @@ match /persons/{personId} {
 C'est ce qui implémente la co-gestion symétrique : deux conjoints, deux numéros,
 même foyer → les deux passent la règle pour tous les membres.
 
+## 5 bis. Invitation du vendredi soir (contenu restreint)
+
+Certains foyers sont invités dès le vendredi soir (dîner du vendredi, petit-déjeuner
+et déjeuner du samedi). Les autres invités ne doivent **jamais** voir ces contenus,
+y compris en inspectant les requêtes : c'est imposé par les Security Rules.
+
+- `access/friday` : `{ householdIds, phones }`. `householdIds` = source de vérité ;
+  `phones` est **dérivé** des `managerPhones` de ces foyers (les règles ne peuvent
+  comparer que le téléphone du token). Illisible par les invités.
+- `events.audience` : `"all"` ou `"friday"` (obligatoire).
+- `info/schedule-friday` : bloc du Programme réservé aux invités du vendredi.
+- `fridayRsvps/{personId}` : réponses aux événements du vendredi (et non
+  `persons.attendance`, lisible par tous les invités).
+
+Gestion : `node scripts/firestore.js friday list | add <householdId> | remove <householdId> | sync`.
+
 ## 6. Migration — attendu de l'agent
 
 1. Écrire un script d'import (idempotent, upsert) qui lit les exports du classeur

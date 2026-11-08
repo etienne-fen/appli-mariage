@@ -65,7 +65,7 @@ function Rsvp() {
                 event={event}
                 members={members}
                 attendance={rsvpMap[event.id] ?? {}}
-                onToggle={(memberId, val) => setAttendance(memberId, event.id, val)}
+                onToggle={(memberId, val) => setAttendance(memberId, event, val)}
                 lang={lang}
                 t={t}
               />

@@ -1,23 +1,57 @@
-import { doc, updateDoc } from 'firebase/firestore'
+import { useEffect, useState } from 'react'
+import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { firestore } from '../firebase/firebaseClient'
+import { useAuth } from '../context/AuthContext'
 
 // members passed in from caller (useHousehold already owns that subscription).
-// Attendance lives directly on each person doc as { [eventId]: true|false|null },
-// so there's no separate collection to keep in sync.
+//
+// Public events: attendance lives on each person doc as { [eventId]: true|false|null }.
+// Invitation-only (Friday) events: attendance lives in fridayRsvps/{personId},
+// readable only by invited households — persons docs are visible to every guest,
+// so storing Friday answers there would reveal who's invited.
 export default function useRsvp(members) {
+  const { householdId } = useAuth()
+  const [fridayDocs, setFridayDocs] = useState({}) // { [personId]: { [eventId]: val } }
+
+  useEffect(() => {
+    if (!householdId) return
+    const q = query(collection(firestore, 'fridayRsvps'), where('householdId', '==', householdId))
+    return onSnapshot(
+      q,
+      snap => {
+        const map = {}
+        snap.docs.forEach(d => { map[d.id] = d.data().attendance ?? {} })
+        setFridayDocs(map)
+      },
+      () => setFridayDocs({}), // not invited → permission denied → nothing to show
+    )
+  }, [householdId])
+
   // { [eventId]: { [personId]: true|false|null } }
   const rsvpMap = {}
-  members.forEach(m => {
-    Object.entries(m.attendance ?? {}).forEach(([eventId, val]) => {
+  const add = (personId, attendance) => {
+    Object.entries(attendance ?? {}).forEach(([eventId, val]) => {
       if (!rsvpMap[eventId]) rsvpMap[eventId] = {}
-      rsvpMap[eventId][m.personId] = val
+      rsvpMap[eventId][personId] = val
     })
+  }
+  members.forEach(m => {
+    add(m.personId, m.attendance)
+    add(m.personId, fridayDocs[m.personId])
   })
 
-  async function setAttendance(personId, eventId, attending) {
-    await updateDoc(doc(firestore, 'persons', personId), {
-      [`attendance.${eventId}`]: attending,
-    })
+  async function setAttendance(personId, event, attending) {
+    if (event.audience === 'friday') {
+      await setDoc(
+        doc(firestore, 'fridayRsvps', personId),
+        { householdId, attendance: { [event.id]: attending } },
+        { merge: true },
+      )
+    } else {
+      await updateDoc(doc(firestore, 'persons', personId), {
+        [`attendance.${event.id}`]: attending,
+      })
+    }
   }
 
   return { rsvpMap, setAttendance }
