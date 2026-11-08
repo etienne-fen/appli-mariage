@@ -5,6 +5,8 @@ import ProtectedRoute from '../src/components/ProtectedRoute'
 import useHousehold from '../src/hooks/useHousehold'
 import useEvents from '../src/hooks/useEvents'
 import useRsvp from '../src/hooks/useRsvp'
+import useAdmin from '../src/hooks/useAdmin'
+import AdminExportButton from '../src/components/AdminExportButton'
 import strings from '../src/i18n/rsvp'
 
 export default function RsvpPage() {
@@ -23,16 +25,29 @@ function Rsvp() {
   const { personId } = useAuth()
   const { household, members: rawMembers, loading: hLoading } = useHousehold()
   const { events, loading: eLoading } = useEvents()
-  const { rsvpMap, setAttendance } = useRsvp(rawMembers)
+  const { rsvpMap, setAttendance, setAttendanceMany } = useRsvp(rawMembers)
+  const { isAdmin } = useAdmin()
 
   const loading = hLoading || eLoading
 
-  const members = rawMembers.map(m => ({
-    memberId: m.personId,
-    name: [m.prenom, m.nom].filter(Boolean).join(' '),
-    isAdult: m.kind === 'adult',
-    isYou: m.personId === personId,
-  }))
+  // The signed-in guest first, then the rest of the tribe in household order.
+  const members = rawMembers
+    .map(m => ({
+      memberId: m.personId,
+      name: [m.prenom, m.nom].filter(Boolean).join(' '),
+      isAdult: m.kind === 'adult',
+      isYou: m.personId === personId,
+    }))
+    .sort((a, b) => b.isYou - a.isYou)
+
+  // Events are already sorted by `order`; group them by day, keeping that order.
+  const days = []
+  events.forEach(e => {
+    const key = e.dayKey ?? 'other'
+    let day = days.find(d => d.key === key)
+    if (!day) days.push(day = { key, events: [] })
+    day.events.push(e)
+  })
 
   return (
     <main style={s.main}>
@@ -50,6 +65,15 @@ function Rsvp() {
 
       <h1 style={s.title}>{t.title}</h1>
 
+      {isAdmin && (
+        <AdminExportButton
+          label={t.exportAll}
+          busyLabel={t.exporting}
+          doneLabel={t.exportDone}
+          run={() => import('../src/lib/exportRsvp').then(m => m.exportRsvpXlsx())}
+        />
+      )}
+
       {loading ? (
         <p style={s.hint}>{t.loading}</p>
       ) : !household ? (
@@ -58,19 +82,20 @@ function Rsvp() {
         <p style={s.hint}>{t.noEvents}</p>
       ) : (
         <>
-          <div style={s.eventList}>
-            {events.map(event => (
-              <EventCard
-                key={event.id}
-                event={event}
-                members={members}
-                attendance={rsvpMap[event.id] ?? {}}
-                onToggle={(memberId, val) => setAttendance(memberId, event, val)}
-                lang={lang}
-                t={t}
-              />
-            ))}
-          </div>
+          {days.map(day => (
+            <DaySection
+              key={day.key}
+              theme={DAY_THEMES[day.key] ?? DAY_THEMES.other}
+              label={t.days[day.key] ?? ''}
+              events={day.events}
+              members={members}
+              rsvpMap={rsvpMap}
+              onToggle={setAttendance}
+              onToggleDay={val => setAttendanceMany(members.map(m => m.memberId), day.events, val)}
+              lang={lang}
+              t={t}
+            />
+          ))}
 
           <Summary events={events} members={members} rsvpMap={rsvpMap} lang={lang} t={t} />
         </>
@@ -79,14 +104,73 @@ function Rsvp() {
   )
 }
 
+// One day: a "whole day" Yes/No that sets every answer of that day for every
+// member shown, then the day's questions. The whole-day button lights up only
+// when all answers of the day already match it; clicking it again clears them.
+// One colour per day, from the app palette (see dashboard.js).
+const DAY_THEMES = {
+  friday:   { accent: '#C04040', tint: '#C040400f', icon: '🌙' },
+  saturday: { accent: '#1E4A2E', tint: '#1E4A2E0d', icon: '💍' },
+  sunday:   { accent: '#B07810', tint: '#E8A0201a', icon: '☀️' },
+  other:    { accent: '#555555', tint: '#0000000a', icon: '📅' },
+}
+
+function DaySection({ theme, label, events, members, rsvpMap, onToggle, onToggleDay, lang, t }) {
+  const [busy, setBusy] = useState(false)
+  const values = events.flatMap(e => members.map(m => (rsvpMap[e.id] ?? {})[m.memberId] ?? null))
+  const allYes = values.length > 0 && values.every(v => v === true)
+  const allNo  = values.length > 0 && values.every(v => v === false)
+
+  async function toggleDay(target, isActive) {
+    setBusy(true)
+    try { await onToggleDay(isActive ? null : target) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <section style={{ ...s.daySection, background: theme.tint, borderColor: `${theme.accent}40` }}>
+      <h2 style={{ ...s.dayTitle, background: theme.accent }}>
+        <span aria-hidden="true">{theme.icon}</span> {label}
+      </h2>
+      <div style={{ ...s.dayBar, borderColor: `${theme.accent}55` }}>
+        <div>
+          <p style={s.dayBarLabel}>{t.wholeDay}</p>
+          <p style={s.dayBarHint}>{t.wholeDayHint(members.length)}</p>
+        </div>
+        <div style={{ ...s.toggleGroup, opacity: busy ? 0.6 : 1 }}>
+          <button disabled={busy} onClick={() => toggleDay(true, allYes)}
+            style={{ ...s.toggleBtn, ...(allYes ? s.toggleYes : {}) }}>
+            {t.yes}
+          </button>
+          <button disabled={busy} onClick={() => toggleDay(false, allNo)}
+            style={{ ...s.toggleBtn, ...(allNo ? s.toggleNo : {}) }}>
+            {t.no}
+          </button>
+        </div>
+      </div>
+      <div style={{ ...s.eventList, padding: '0 0.75rem 0.75rem' }}>
+        {events.map(event => (
+          <EventCard
+            key={event.id}
+            event={event}
+            members={members}
+            attendance={rsvpMap[event.id] ?? {}}
+            onToggle={(memberId, val) => onToggle(memberId, event, val)}
+            lang={lang}
+            t={t}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function EventCard({ event, members, attendance, onToggle, lang, t }) {
   return (
     <div style={s.card}>
       <div style={s.cardHeader}>
         <span style={s.cardTitle}>{event.title[lang]}</span>
-        <span style={s.cardMeta}>
-          {event.day[lang]} · {event.timeStart}
-        </span>
+        <span style={s.cardMeta}>{event.timeStart}</span>
       </div>
       {event.location && (
         <p style={s.cardLocation}>{event.location}</p>
@@ -195,9 +279,25 @@ const s = {
   },
   title: { fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.25rem' },
   hint: { color: '#aaa', fontSize: '0.9rem' },
-  eventList: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' },
+  eventList: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
+  daySection: {
+    marginBottom: '2.25rem', borderRadius: '1rem', border: '1.5px solid',
+    overflow: 'hidden',
+  },
+  dayTitle: {
+    margin: 0, padding: '0.7rem 1rem', color: '#fff',
+    fontSize: '1.15rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+  },
+  dayBar: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem',
+    background: '#fff', border: '1.5px solid', borderRadius: '0.75rem',
+    padding: '0.75rem 1rem', margin: '0.75rem',
+  },
+  dayBarLabel: { margin: 0, fontWeight: 700, fontSize: '0.9rem' },
+  dayBarHint: { margin: '0.1rem 0 0', fontSize: '0.75rem', color: '#888' },
   card: {
-    background: '#f9f9f9', borderRadius: '0.75rem', padding: '1rem',
+    background: '#fff', borderRadius: '0.75rem', padding: '1rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
   },
   cardHeader: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',

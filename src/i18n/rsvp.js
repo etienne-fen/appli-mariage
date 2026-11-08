@@ -15,6 +15,12 @@ const strings = {
     adult: 'Adulte',
     child: 'Enfant',
     attendingList: (names) => names.length ? names.join(', ') : '—',
+    days: { friday: 'Vendredi', saturday: 'Samedi', sunday: 'Dimanche' },
+    wholeDay: 'Confirmez toute la journée',
+    wholeDayHint: (n) => n > 1 ? `Pour les ${n} membres de la tribu` : 'Pour vous',
+    exportAll: 'Télécharger toutes les réponses (Excel)',
+    exporting: 'Préparation du fichier…',
+    exportDone: (n) => `Fichier téléchargé : ${n} invité${n > 1 ? 's' : ''}.`,
   },
   EN: {
     title: 'My RSVPs',
@@ -32,6 +38,12 @@ const strings = {
     adult: 'Adult',
     child: 'Child',
     attendingList: (names) => names.length ? names.join(', ') : '—',
+    days: { friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
+    wholeDay: 'Confirm the whole day',
+    wholeDayHint: (n) => n > 1 ? `For all ${n} members of the tribe` : 'For you',
+    exportAll: 'Download all answers (Excel)',
+    exporting: 'Preparing the file…',
+    exportDone: (n) => `File downloaded: ${n} guest${n > 1 ? 's' : ''}.`,
   },
 }
 

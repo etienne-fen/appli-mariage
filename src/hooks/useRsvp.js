@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { firestore } from '../firebase/firebaseClient'
 import { useAuth } from '../context/AuthContext'
 
@@ -54,5 +54,26 @@ export default function useRsvp(members) {
     }
   }
 
-  return { rsvpMap, setAttendance }
+  // Sets `attending` for every (person × event) pair in one atomic batch —
+  // used by the "whole day" toggle. One write per doc, whatever the count.
+  async function setAttendanceMany(personIds, events, attending) {
+    const batch = writeBatch(firestore)
+    const publicEvents = events.filter(e => e.audience !== 'friday')
+    const fridayEvents = events.filter(e => e.audience === 'friday')
+    personIds.forEach(personId => {
+      if (publicEvents.length) {
+        const fields = {}
+        publicEvents.forEach(e => { fields[`attendance.${e.id}`] = attending })
+        batch.update(doc(firestore, 'persons', personId), fields)
+      }
+      if (fridayEvents.length) {
+        const attendance = {}
+        fridayEvents.forEach(e => { attendance[e.id] = attending })
+        batch.set(doc(firestore, 'fridayRsvps', personId), { householdId, attendance }, { merge: true })
+      }
+    })
+    await batch.commit()
+  }
+
+  return { rsvpMap, setAttendance, setAttendanceMany }
 }

@@ -10,7 +10,7 @@ const CORAL  = '#C04040'
 const GOLD   = '#E8A020'
 
 const NAV_ITEMS = [
-  { path: '/group',      icon: '👥', FR: 'Mon groupe',     EN: 'My group'      },
+  { path: '/group',      icon: '👤', FR: 'Mon profil',     EN: 'My profile'    },
   { path: '/rsvp',       icon: '✉️', FR: 'Mes réponses',   EN: 'My RSVPs'      },
   { path: '/meals',      icon: '🍽️', FR: 'Mon menu',       EN: 'My meal'       },
   { path: '/info',       icon: 'ℹ️', FR: 'Infos mariage',  EN: 'Wedding info'  },

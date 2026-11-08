@@ -86,8 +86,9 @@ events/{eventId}                — public: ceremony|cocktail|dinner|party|brunc
                                   friday-only: friday-dinner|saturday-breakfast|saturday-lunch
   audience: "all" | "friday"   — REQUIRED; rules hide docs without it. Clients must query
                                  where('audience','==',…) (unfiltered queries are rejected)
+  dayKey: "friday" | "saturday" | "sunday" — groups "Mes réponses" into one section per day
   title: { FR, EN }            — bilingual label
-  day:   { FR, EN }            — e.g. "Samedi" / "Saturday"
+  day:   { FR, EN }            — e.g. "Samedi soir" / "Saturday evening"
   timeStart: string            — "HH:MM"
   location: string
   order: number                — sort key (decimals ok; sorted client-side, no index)

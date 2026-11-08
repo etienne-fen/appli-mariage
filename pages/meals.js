@@ -4,6 +4,8 @@ import ProtectedRoute from '../src/components/ProtectedRoute'
 import { useAuth } from '../src/context/AuthContext'
 import useHousehold from '../src/hooks/useHousehold'
 import useMeals from '../src/hooks/useMeals'
+import useAdmin from '../src/hooks/useAdmin'
+import AdminExportButton from '../src/components/AdminExportButton'
 import MEAL_OPTIONS from '../src/lib/mealOptions'
 import strings from '../src/i18n/meals'
 
@@ -20,12 +22,32 @@ function Meals() {
   const { members: rawMembers, loading } = useHousehold()
   const { mealMap, saveMeal } = useMeals(rawMembers)
 
-  const members = rawMembers.map(m => ({
-    memberId: m.personId,
-    name: [m.prenom, m.nom].filter(Boolean).join(' '),
-    isAdult: m.kind === 'adult',
-    isYou: m.personId === personId,
-  }))
+  const { isAdmin } = useAdmin()
+
+  // The signed-in guest first, then the rest of the tribe.
+  const members = rawMembers
+    .map(m => ({
+      memberId: m.personId,
+      name: [m.prenom, m.nom].filter(Boolean).join(' '),
+      isAdult: m.kind === 'adult',
+      isYou: m.personId === personId,
+      declinedDinner: m.attendance?.dinner === false,
+    }))
+    .sort((a, b) => b.isYou - a.isYou)
+  const me = members.filter(m => m.isYou)
+  const tribe = members.filter(m => !m.isYou)
+
+  const renderCard = m => (
+    <MemberCard
+      key={m.memberId}
+      member={m}
+      meal={mealMap[m.memberId] ?? { regime: null, notes: '' }}
+      onChoiceChange={choice => saveMeal(m.memberId, { regime: choice })}
+      onNotesBlur={notes => saveMeal(m.memberId, { notes })}
+      lang={lang}
+      t={t}
+    />
+  )
 
   return (
     <main style={s.main}>
@@ -37,25 +59,38 @@ function Meals() {
       </nav>
 
       <h1 style={s.title}>{t.title}</h1>
+
+      <div style={s.banner}>
+        <span style={s.bannerIcon} aria-hidden="true">🍽️</span>
+        <div>
+          <p style={s.bannerTitle}>{t.dinnerOnlyTitle}</p>
+          <p style={s.bannerText}>{t.dinnerOnlyText}</p>
+        </div>
+      </div>
+
+      {isAdmin && (
+        <AdminExportButton
+          label={t.exportAll}
+          busyLabel={t.exporting}
+          doneLabel={t.exportDone}
+          run={() => import('../src/lib/exportMeals').then(m => m.exportMealsXlsx())}
+        />
+      )}
+
       <p style={s.hint}>{t.savedHint}</p>
 
       {loading ? (
         <p style={s.muted}>{t.loading}</p>
       ) : (
         <>
-          <div style={s.cards}>
-            {members.map(m => (
-              <MemberCard
-                key={m.memberId}
-                member={m}
-                meal={mealMap[m.memberId] ?? { regime: null, notes: '' }}
-                onChoiceChange={choice => saveMeal(m.memberId, { regime: choice })}
-                onNotesBlur={notes => saveMeal(m.memberId, { notes })}
-                lang={lang}
-                t={t}
-              />
-            ))}
-          </div>
+          <div style={s.cards}>{me.map(renderCard)}</div>
+
+          {tribe.length > 0 && (
+            <>
+              <h2 style={s.sectionTitle}>{t.tribeTitle}</h2>
+              <div style={s.cards}>{tribe.map(renderCard)}</div>
+            </>
+          )}
 
           {members.length > 0 && (
             <Summary members={members} mealMap={mealMap} lang={lang} t={t} />
@@ -85,6 +120,8 @@ function MemberCard({ member, meal, onChoiceChange, onNotesBlur, lang, t }) {
           <span style={s.tag}>{member.isAdult ? t.adult : t.child}</span>
         </div>
       </div>
+
+      {member.declinedDinner && <p style={s.declined}>{t.declinedDinner}</p>}
 
       <p style={s.label}>{t.mainCourse}</p>
       <div style={s.optionGroup}>
@@ -160,7 +197,20 @@ const s = {
     padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#666',
   },
   title: { fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' },
-  hint: { fontSize: '0.8rem', color: '#aaa', marginBottom: '1.25rem' },
+  hint: { fontSize: '0.8rem', color: '#aaa', marginBottom: '1rem' },
+  banner: {
+    display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+    background: '#1E4A2E0d', border: '1.5px solid #1E4A2E55', borderRadius: '0.75rem',
+    padding: '0.85rem 1rem', margin: '0.75rem 0 1rem',
+  },
+  bannerIcon: { fontSize: '1.4rem', lineHeight: 1 },
+  bannerTitle: { margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1E4A2E' },
+  bannerText: { margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#555' },
+  sectionTitle: { fontSize: '1.15rem', fontWeight: 700, margin: '0.5rem 0 0.75rem' },
+  declined: {
+    margin: '0 0 0.6rem', fontSize: '0.78rem', color: '#856404',
+    background: '#fff3cd', borderRadius: '0.4rem', padding: '0.35rem 0.6rem',
+  },
   muted: { color: '#aaa', fontSize: '0.875rem' },
   cards: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' },
   card: { background: '#f9f9f9', borderRadius: '0.75rem', padding: '1rem' },

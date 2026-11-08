@@ -6,6 +6,8 @@ import { SECTIONS } from '../../src/lib/seedInfo'
 import useInfoSection from '../../src/hooks/useInfoSection'
 import useAdmin from '../../src/hooks/useAdmin'
 import { useAuth } from '../../src/context/AuthContext'
+import useRoom from '../../src/hooks/useRoom'
+import DomainMap from '../../src/components/DomainMap'
 import InfoEditor from '../../src/components/InfoEditor'
 import strings from '../../src/i18n/info'
 
@@ -49,6 +51,8 @@ export default function SectionPage({ sectionId }) {
 
       <h1 style={{ ...s.title, marginBottom: '1.25rem' }}>{meta?.icon} {title}</h1>
 
+      {sectionId === 'accommodation' && <AccommodationMap lang={lang} />}
+
       {/* key={lang}: switching language discards an in-progress edit */}
       <EditableBlock key={`${sectionId}-${lang}`} docId={sectionId} lang={lang} isAdmin={isAdmin} t={t} />
 
@@ -56,6 +60,26 @@ export default function SectionPage({ sectionId }) {
         <RestrictedBlock key={`${block.docId}-${lang}`} {...block} lang={lang} isAdmin={isAdmin} t={t} />
       ))}
     </main>
+  )
+}
+
+// Plan of the domain; for a signed-in guest with a room, their building is
+// highlighted and their room is summarised above the plan.
+function AccommodationMap({ lang }) {
+  const { person } = useAuth()
+  const { room } = useRoom(person?.roomId ?? null)
+  const t = strings[lang]
+  return (
+    <>
+      {room && (
+        <div style={s.myRoom}>
+          <p style={s.myRoomLabel}>{t.myRoom}</p>
+          <p style={s.myRoomName}>{room.chambre}</p>
+          <p style={s.myRoomMeta}>{room.batiment} · {room.niveau}</p>
+        </div>
+      )}
+      <DomainMap highlight={room?.batiment ?? null} lang={lang} />
+    </>
   )
 }
 
@@ -155,6 +179,10 @@ const s = {
   editBtn: { padding: '0.35rem 0.75rem', borderRadius: '0.4rem', border: '1.5px solid #ddd', background: 'none', fontSize: '0.8rem', cursor: 'pointer', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 },
   muted:   { color: '#aaa', fontSize: '0.9rem' },
   editRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' },
+  myRoom:      { background: '#E8A0201f', border: '1.5px solid #E8A020', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '0.75rem' },
+  myRoomLabel: { margin: 0, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8a5a00' },
+  myRoomName:  { margin: '0.15rem 0 0', fontSize: '1.1rem', fontWeight: 700 },
+  myRoomMeta:  { margin: '0.1rem 0 0', fontSize: '0.85rem', color: '#666' },
   restricted:      { marginTop: '2rem', paddingTop: '1.25rem', borderTop: '1px solid #eee' },
   restrictedTitle: { fontSize: '1.15rem', fontWeight: 700, margin: '0 0 0.75rem' },
 

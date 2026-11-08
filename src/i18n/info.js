@@ -10,6 +10,7 @@ const strings = {
     email:        'Email',
     bookNow:      'Réserver',
     fridayTitle:  'Vendredi soir — sur invitation',
+    myRoom:       'Votre chambre',
   },
   EN: {
     hub:          'Wedding info',
@@ -22,6 +23,7 @@ const strings = {
     email:        'Email',
     bookNow:      'Book',
     fridayTitle:  'Friday night — by invitation',
+    myRoom:       'Your room',
   },
 }
 

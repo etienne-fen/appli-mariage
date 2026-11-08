@@ -12,6 +12,13 @@ const strings = {
     adult: 'Adulte',
     child: 'Enfant',
     savedHint: 'Les choix sont enregistrés automatiquement.',
+    dinnerOnlyTitle: 'Dîner du samedi soir uniquement',
+    dinnerOnlyText: 'Ces choix concernent seulement le dîner du samedi soir. Les autres repas ne nécessitent pas de choix de menu.',
+    tribeTitle: 'Ma tribu',
+    declinedDinner: 'A répondu « non » pour le dîner du samedi dans Mes réponses.',
+    exportAll: 'Télécharger tous les menus (Excel)',
+    exporting: 'Préparation du fichier…',
+    exportDone: (n) => `Fichier téléchargé : ${n} invité${n > 1 ? 's' : ''}.`,
   },
   EN: {
     title: 'My meal',
@@ -26,6 +33,13 @@ const strings = {
     adult: 'Adult',
     child: 'Child',
     savedHint: 'Choices are saved automatically.',
+    dinnerOnlyTitle: 'Saturday dinner only',
+    dinnerOnlyText: 'These choices only apply to the Saturday evening dinner. No menu choice is needed for the other meals.',
+    tribeTitle: 'My tribe',
+    declinedDinner: 'Answered "no" for Saturday dinner in My RSVPs.',
+    exportAll: 'Download all menus (Excel)',
+    exporting: 'Preparing the file…',
+    exportDone: (n) => `File downloaded: ${n} guest${n > 1 ? 's' : ''}.`,
   },
 }
 
