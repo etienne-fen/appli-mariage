@@ -31,3 +31,8 @@ Thumbs.db
 
 # Claude Code personal settings
 .claude/settings.local.json
+
+# Firebase service-account keys - never commit
+.secrets/
+*service-account*.json
+*-firebase-adminsdk-*.json
