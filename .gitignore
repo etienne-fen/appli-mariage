@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# environment variables — never commit real credentials
+.env.local
+.env.*.local
+
+# Firebase local emulator data
+.firebase/
+firebase-debug.log
+firestore-debug.log
+storage-debug.log
+ui-debug.log
+
+# PWA generated files (next-pwa writes these to public/)
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Claude Code personal settings
+.claude/settings.local.json

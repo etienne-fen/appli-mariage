@@ -1,0 +1,38 @@
+const strings = {
+  FR: {
+    title: 'Mes réponses',
+    back: 'Retour',
+    summary: 'Récapitulatif',
+    yes: 'Oui',
+    no: 'Non',
+    you: 'vous',
+    loading: 'Chargement…',
+    noEvents: 'Aucun événement configuré.',
+    noHousehold: "Configurez d'abord votre groupe.",
+    attending: '✓',
+    notAttending: '✗',
+    notAnswered: '?',
+    adult: 'Adulte',
+    child: 'Enfant',
+    attendingList: (names) => names.length ? names.join(', ') : '—',
+  },
+  EN: {
+    title: 'My RSVPs',
+    back: 'Back',
+    summary: 'Summary',
+    yes: 'Yes',
+    no: 'No',
+    you: 'you',
+    loading: 'Loading…',
+    noEvents: 'No events configured.',
+    noHousehold: 'Set up your group first.',
+    attending: '✓',
+    notAttending: '✗',
+    notAnswered: '?',
+    adult: 'Adult',
+    child: 'Child',
+    attendingList: (names) => names.length ? names.join(', ') : '—',
+  },
+}
+
+export default strings

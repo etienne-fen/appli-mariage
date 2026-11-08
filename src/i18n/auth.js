@@ -1,0 +1,46 @@
+const strings = {
+  FR: {
+    title: 'Bienvenue',
+    subtitle: 'Connectez-vous avec votre numéro de téléphone',
+    phonePlaceholder: '+33 6 12 34 56 78',
+    sendCode: 'Envoyer le code',
+    otpPrompt: (phone) => `Code envoyé au ${phone}`,
+    codePlaceholder: '123456',
+    verify: 'Vérifier',
+    back: 'Retour',
+    sending: 'Envoi en cours…',
+    signingIn: 'Connexion…',
+    signOut: 'Se déconnecter',
+    errors: {
+      notInvited: "Ce numéro ne figure pas sur la liste des invités.\nThis number is not on the guest list.",
+      invalidPhone: "Numéro de téléphone invalide.",
+      wrongCode: "Code incorrect. Veuillez réessayer.",
+      codeExpired: "Code expiré. Renvoyez un nouveau code.",
+      tooManyRequests: "Trop de tentatives. Réessayez dans quelques minutes.",
+      generic: "Une erreur est survenue. Veuillez réessayer.",
+    },
+  },
+  EN: {
+    title: 'Welcome',
+    subtitle: 'Sign in with your phone number',
+    phonePlaceholder: '+33 6 12 34 56 78',
+    sendCode: 'Send code',
+    otpPrompt: (phone) => `Code sent to ${phone}`,
+    codePlaceholder: '123456',
+    verify: 'Verify',
+    back: 'Back',
+    sending: 'Sending…',
+    signingIn: 'Signing in…',
+    signOut: 'Sign out',
+    errors: {
+      notInvited: "This number is not on the guest list.\nCe numéro ne figure pas sur la liste des invités.",
+      invalidPhone: "Invalid phone number.",
+      wrongCode: "Incorrect code. Please try again.",
+      codeExpired: "Code expired. Please request a new one.",
+      tooManyRequests: "Too many attempts. Please try again in a few minutes.",
+      generic: "Something went wrong. Please try again.",
+    },
+  },
+}
+
+export default strings

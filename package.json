@@ -1,0 +1,22 @@
+{
+  "name": "appli-mariage",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "deploy": "next build && firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore,storage"
+  },
+  "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.23.6",
+    "@tiptap/starter-kit": "^3.23.6",
+    "firebase": "^10.9.0",
+    "next": "^14.2.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}
