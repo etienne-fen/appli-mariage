@@ -9,7 +9,7 @@ import { firestore } from '../firebase/firebaseClient'
 //           (see src/lib/audiences.js + firestore.rules)
 // An event without `audience` is invisible to guests — always set it.
 // dayKey: friday | saturday | sunday — groups events by day in "Mes réponses".
-// timeStart may be '' (e.g. the "Dodo" nights).
+// timeStart may be '' (e.g. the "Nuit au Domaine" nights).
 // 'dinner' (Dîner & Soirée) is also the event the Menu and the menu export rely on.
 export const EVENT_SEEDS = [
   {
@@ -26,7 +26,7 @@ export const EVENT_SEEDS = [
     id: 'friday-night',
     audience: 'fridayLodging',
     dayKey: 'friday',
-    title: { FR: 'Dodo', EN: 'Overnight stay' },
+    title: { FR: 'Nuit au Domaine', EN: 'Night at the Domaine' },
     day:   { FR: 'Vendredi soir', EN: 'Friday night' },
     timeStart: '',
     location: 'Domaine du Possible',
@@ -56,7 +56,7 @@ export const EVENT_SEEDS = [
     id: 'saturday-night',
     audience: 'lodging',
     dayKey: 'saturday',
-    title: { FR: 'Dodo', EN: 'Overnight stay' },
+    title: { FR: 'Nuit au Domaine', EN: 'Night at the Domaine' },
     day:   { FR: 'Samedi soir', EN: 'Saturday night' },
     timeStart: '',
     location: 'Domaine du Possible',

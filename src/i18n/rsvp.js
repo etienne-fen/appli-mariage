@@ -21,6 +21,8 @@ const strings = {
     exportAll: 'Télécharger toutes les réponses (Excel)',
     exporting: 'Préparation du fichier…',
     exportDone: (n) => `Fichier téléchargé : ${n} invité${n > 1 ? 's' : ''}.`,
+    send: 'Envoyer mes réponses',
+    sent: 'Vos réponses ont été prises en compte',
   },
   EN: {
     title: 'My RSVPs',
@@ -44,6 +46,8 @@ const strings = {
     exportAll: 'Download all answers (Excel)',
     exporting: 'Preparing the file…',
     exportDone: (n) => `File downloaded: ${n} guest${n > 1 ? 's' : ''}.`,
+    send: 'Send my answers',
+    sent: 'Your answers have been saved',
   },
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import ProtectedRoute from '../src/components/ProtectedRoute'
 
@@ -38,7 +39,7 @@ export default function DirectionsPage() {
 
 function Directions() {
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const [copied, setCopied] = useState(false)
   const t = strings[lang]
 
@@ -102,13 +103,13 @@ function Directions() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = {
-  main:       { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh' },
+  main:       { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif' },
   nav:        { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' },
   backBtn:    { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
   langBtn:    { background: 'none', border: '1px solid #ddd', borderRadius: '0.25rem', padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#666' },
   title:      { fontSize: '1.5rem', fontWeight: 700, margin: '0 0 1.25rem' },
 
-  card:       { background: '#f5f5f5', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' },
+  card:       { background: '#fff', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' },
   venueName:  { fontWeight: 700, fontSize: '1rem', margin: '0 0 0.4rem' },
   address:    { fontSize: '0.9rem', color: '#555', lineHeight: 1.5, margin: '0 0 1rem' },
   copyBtn:    { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.875rem', borderRadius: '0.5rem', border: 'none', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 500, transition: 'background 0.15s' },

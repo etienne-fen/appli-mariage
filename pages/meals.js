@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import ProtectedRoute from '../src/components/ProtectedRoute'
 import { useAuth } from '../src/context/AuthContext'
@@ -16,7 +17,7 @@ export default function MealsPage() {
 
 function Meals() {
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const t = strings[lang]
 
   const { personId } = useAuth()
@@ -203,7 +204,7 @@ function Summary({ members, mealMap, lang, t }) {
 const s = {
   main: {
     maxWidth: '480px', margin: '0 auto', padding: '1.25rem',
-    fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
   backBtn: { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
@@ -219,7 +220,7 @@ const s = {
     padding: '0.85rem 1rem', margin: '0.75rem 0 1rem',
   },
   bannerIcon: { fontSize: '1.4rem', lineHeight: 1 },
-  soon: { textAlign: 'center', background: '#f5f5f5', borderRadius: '0.75rem', padding: '2rem 1.25rem', marginTop: '1rem' },
+  soon: { textAlign: 'center', background: '#fff', borderRadius: '0.75rem', padding: '2rem 1.25rem', marginTop: '1rem' },
   soonIcon: { fontSize: '2.2rem', margin: 0 },
   soonTitle: { fontSize: '1.1rem', fontWeight: 700, margin: '0.5rem 0 0.25rem' },
   soonText: { fontSize: '0.875rem', color: '#777', margin: 0 },
@@ -233,7 +234,7 @@ const s = {
   },
   muted: { color: '#aaa', fontSize: '0.875rem' },
   cards: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' },
-  card: { background: '#f9f9f9', borderRadius: '0.75rem', padding: '1rem' },
+  card: { background: '#fff', borderRadius: '0.75rem', padding: '1rem' },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
   memberName: { fontWeight: 600, fontSize: '0.95rem' },
   tags: { display: 'flex', gap: '0.35rem' },

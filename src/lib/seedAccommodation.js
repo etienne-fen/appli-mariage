@@ -89,7 +89,7 @@ export async function importAccommodation({ chambres = [], personnes = [], foyer
     friday = snap.exists() ? snap.data().householdIds ?? [] : []
   }
 
-  // "Logé au Domaine" (Dodo questions). Legacy JSON without the column:
+  // "Logé au Domaine" (Nuit au Domaine questions). Legacy JSON without the column:
   // households with a member assigned to a room.
   const lodging = Array.isArray(lodgingHouseholdIds)
     ? lodgingHouseholdIds
@@ -103,7 +103,7 @@ export async function importAccommodation({ chambres = [], personnes = [], foyer
     await Promise.all(foyers.map(f => setDoc(doc(firestore, 'households', f.householdId), { lodgedOnSite: set.has(f.householdId) }, { merge: true })))
   }
 
-  // Vendredi soir - Dodo = invited on Friday AND lodged on site.
+  // Vendredi soir - Nuit au Domaine = invited on Friday AND lodged on site.
   await setAudience('fridayLodging', intersect(friday, lodging))
 
   // managerPhones may have changed → rebuild every list's phones.

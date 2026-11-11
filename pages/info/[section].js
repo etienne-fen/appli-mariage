@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useLang from '../../src/context/LangContext'
 import { useRouter } from 'next/router'
 import { doc, setDoc } from 'firebase/firestore'
 import { firestore } from '../../src/firebase/firebaseClient'
@@ -32,7 +33,7 @@ const VARIANTS = {
 
 export default function SectionPage({ sectionId }) {
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const { isAdmin } = useAdmin()
   const { infoEnabled, loading: sectionsLoading } = useSections()
   const enabled = infoEnabled(sectionId)
@@ -214,7 +215,7 @@ function SectionContent({ content }) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = {
-  main:    { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh' },
+  main:    { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif' },
   nav:     { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
   navRight:{ display: 'flex', gap: '0.5rem', alignItems: 'center' },
   backBtn: { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
@@ -224,14 +225,14 @@ const s = {
   editBtn: { padding: '0.35rem 0.75rem', borderRadius: '0.4rem', border: '1.5px solid #ddd', background: 'none', fontSize: '0.8rem', cursor: 'pointer', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 },
   muted:   { color: '#aaa', fontSize: '0.9rem' },
   editRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' },
-  soon:      { textAlign: 'center', background: '#f5f5f5', borderRadius: '0.75rem', padding: '2rem 1.25rem' },
+  soon:      { textAlign: 'center', background: '#fff', borderRadius: '0.75rem', padding: '2rem 1.25rem' },
   soonTitle: { fontSize: '1.1rem', fontWeight: 700, margin: '0 0 0.25rem' },
   adminClosed: { fontSize: '0.8rem', color: '#856404', background: '#fff3cd', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', margin: '0 0 1rem' },
   myRoom:      { background: '#E8A0201f', border: '1.5px solid #E8A020', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '0.75rem' },
   myRoomLabel: { margin: 0, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8a5a00' },
   myRoomName:  { margin: '0.15rem 0 0', fontSize: '1.1rem', fontWeight: 700 },
   myRoomMeta:  { margin: '0.1rem 0 0', fontSize: '0.85rem', color: '#666' },
-  tabs:    { display: 'flex', gap: '0.25rem', background: '#f0f0f0', borderRadius: '0.6rem', padding: '0.25rem', marginBottom: '0.5rem' },
+  tabs:    { display: 'flex', gap: '0.25rem', background: '#ffffff99', borderRadius: '0.6rem', padding: '0.25rem', marginBottom: '0.5rem' },
   tab:     { flex: 1, padding: '0.5rem 0.4rem', border: 'none', borderRadius: '0.45rem', background: 'transparent', fontSize: '0.82rem', fontWeight: 600, color: '#666', cursor: 'pointer' },
   tabActive: { background: '#fff', color: '#1a1a1a', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' },
   tabHint: { fontSize: '0.75rem', color: '#888', margin: '0 0 1rem' },

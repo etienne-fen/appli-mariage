@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth'
 import { auth } from '../src/firebase/firebaseClient'
@@ -10,7 +11,7 @@ import strings from '../src/i18n/auth'
 export default function LoginPage() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const [step, setStep] = useState('phone')
   const [phone, setPhone] = useState('+33')
   const [code, setCode] = useState('')
@@ -116,7 +117,7 @@ export default function LoginPage() {
       <div style={s.hero}>
         <h1 style={s.title}>Charlotte<br />&amp; Etienne</h1>
         <WavyLine />
-        <p style={s.tagline}>Du Sud, d'Est en Ouest</p>
+        <p style={s.tagline}>{lang === 'FR' ? 'Mariage - Le Sud, d’Est en Ouest…' : 'Wedding - The South, from East to West…'}</p>
       </div>
 
       {/* Form */}
@@ -182,7 +183,6 @@ export default function LoginPage() {
       <p style={s.date}>3 juillet 2027</p>
 
       {/* Scallop decoration */}
-      <ScallopBottom />
 
       <div id="recaptcha-container" />
     </div>
@@ -206,39 +206,23 @@ function WavyLine() {
   )
 }
 
-function ScallopBottom() {
-  return (
-    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', overflow: 'hidden', lineHeight: 0 }}>
-      {Array.from({ length: 30 }, (_, i) => (
-        <div key={i} style={{
-          flexShrink: 0,
-          width: 28,
-          height: 14,
-          borderRadius: '14px 14px 0 0',
-          background: '#E8A020',
-        }} />
-      ))}
-    </div>
-  )
-}
-
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif"
 const GREEN  = '#1E4A2E'
-const CREAM  = '#F5E8D0'
+const CREAM  = '#F5ECDD'
 const CORAL  = '#C04040'
 
 const s = {
   page: {
     position: 'relative',
-    minHeight: '100vh',
+    minHeight: 'calc(100vh - 30px)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '2rem 1.5rem 3.5rem',
-    background: `linear-gradient(175deg, #EEC5B5 0%, #F2D5C0 22%, ${CREAM} 55%, ${CREAM} 100%)`,
+    background: CREAM,
     overflow: 'hidden',
   },
 

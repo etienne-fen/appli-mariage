@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import {
   collection, addDoc, deleteDoc, updateDoc,
   doc, setDoc, serverTimestamp, Timestamp,
 } from 'firebase/firestore'
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
 import { firestore, storage } from '../src/firebase/firebaseClient'
 import { useAuth } from '../src/context/AuthContext'
 import useAdmin from '../src/hooks/useAdmin'
@@ -36,6 +37,15 @@ const strings = {
     // Guest gate messages
     notEnabled:   'Le partage de photos n\'est pas encore ouvert.',
     opensOn:      date => `Le partage ouvrira le ${date}.`,
+    rulesTitle:   'Comment ça marche ?',
+    rules: [
+      'Les photos que vous ajoutez rejoignent un album commun, visible par tous les invités connectés.',
+      'Photos uniquement (pas de vidéos), 20 Mo maximum par photo, une à la fois.',
+      'Elles sont envoyées en qualité originale : les mariés les gardent toutes en souvenir.',
+      'Les mariés peuvent masquer une photo si besoin.',
+    ],
+    tooBig:       'Cette photo dépasse 20 Mo. Choisissez-en une plus légère.',
+    notImage:     'Seules les photos sont acceptées (pas de vidéos).',
   },
   EN: {
     title:        'Photos',
@@ -58,7 +68,41 @@ const strings = {
     saved:        'Saved ✓',
     notEnabled:   'Photo sharing is not open yet.',
     opensOn:      date => `Sharing will open on ${date}.`,
+    rulesTitle:   'How it works',
+    rules: [
+      'Photos you add go into a shared album that every signed-in guest can see.',
+      'Photos only (no videos), 20 MB max per photo, one at a time.',
+      'They are sent in original quality: the couple keeps them all as a memory.',
+      'The couple can hide a photo if needed.',
+    ],
+    tooBig:       'This photo is larger than 20 MB. Please choose a lighter one.',
+    notImage:     'Only photos are accepted (no videos).',
   },
+}
+
+const MAX_BYTES = 20 * 1024 * 1024 // keep in sync with storage.rules
+const THUMB_SIZE = 600              // px, longest side
+
+// Builds a small JPEG preview in the browser and uploads it next to the
+// original. Returns { path, url }, or null if the format can't be decoded
+// (the gallery then falls back to the original).
+async function uploadThumbnail(file, path) {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale  = Math.min(1, THUMB_SIZE / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width  = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close?.()
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8))
+    if (!blob) return null
+    const r = ref(storage, path)
+    await uploadBytes(r, blob, { contentType: 'image/jpeg' })
+    return { path, url: await getDownloadURL(r) }
+  } catch {
+    return null
+  }
 }
 
 export default function PhotosPage() {
@@ -73,7 +117,7 @@ function Photos() {
   const router      = useRouter()
   const { user }    = useAuth()
   const { isAdmin } = useAdmin()
-  const [lang, setLang]         = useState('FR')
+  const [lang, setLang]         = useLang()
   const [progress, setProgress] = useState(null)
   const [error, setError]       = useState('')
   const [lightbox, setLightbox] = useState(null)
@@ -111,10 +155,16 @@ function Photos() {
     if (!file) return
     e.target.value = ''
     setError('')
+    // Same limits as storage.rules — tell the guest instead of failing silently.
+    if (!file.type.startsWith('image/')) return setError(t.notImage)
+    if (file.size > MAX_BYTES) return setError(t.tooBig)
     setProgress(0)
 
+    const stamp    = Date.now()
     const ext      = file.name.split('.').pop() || 'jpg'
-    const storPath = `photos/${user.uid}/${Date.now()}.${ext}`
+    const storPath = `photos/${user.uid}/${stamp}.${ext}`
+    // Small preview for the gallery grid (keeps it fast with hundreds of photos).
+    const thumb    = await uploadThumbnail(file, `photos/${user.uid}/${stamp}_thumb.jpg`)
     const task     = uploadBytesResumable(ref(storage, storPath), file)
 
     task.on(
@@ -127,6 +177,7 @@ function Photos() {
           await addDoc(collection(firestore, 'photos'), {
             guestId: user.uid, storagePath: storPath,
             downloadURL, status: 'approved',
+            ...(thumb && { thumbPath: thumb.path, thumbURL: thumb.url }),
             createdAt: serverTimestamp(),
           })
         } catch { setError(t.error) }
@@ -147,6 +198,7 @@ function Photos() {
     if (!window.confirm(t.confirmDel)) return
     await deleteDoc(doc(firestore, 'photos', photo.id))
     try { await deleteObject(ref(storage, photo.storagePath)) } catch {}
+    if (photo.thumbPath) try { await deleteObject(ref(storage, photo.thumbPath)) } catch {}
     if (lightbox?.id === photo.id) setLightbox(null)
   }, [lightbox, t.confirmDel])
 
@@ -176,6 +228,13 @@ function Photos() {
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
 
       <h1 style={s.title}>📸 {t.title}</h1>
+
+      <div style={s.rules}>
+        <p style={s.rulesTitle}>{t.rulesTitle}</p>
+        <ul style={s.rulesList}>
+          {t.rules.map(r => <li key={r}>{r}</li>)}
+        </ul>
+      </div>
 
       {/* Admin settings panel */}
       {isAdmin && !sl && <AdminSettings settings={settings} t={t} lang={lang} />}
@@ -298,7 +357,7 @@ function PhotoCard({ photo, isAdmin, t, onOpen, onHide, onDelete }) {
   const hidden = photo.status === 'hidden'
   return (
     <div style={{ ...s.cell, opacity: hidden ? 0.45 : 1 }}>
-      <img src={photo.downloadURL} alt="" loading="lazy" style={s.thumb} onClick={onOpen} />
+      <img src={photo.thumbURL || photo.downloadURL} alt="" loading="lazy" decoding="async" style={s.thumb} onClick={onOpen} />
       {isAdmin && (
         <div style={s.adminBar}>
           <button style={s.adminBtn} onClick={onHide}>{hidden ? t.show : t.hide}</button>
@@ -312,17 +371,20 @@ function PhotoCard({ photo, isAdmin, t, onOpen, onHide, onDelete }) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = {
-  main:         { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh' },
+  main:         { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif' },
   nav:          { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '0.5rem' },
   navRight:     { display: 'flex', gap: '0.5rem', alignItems: 'center' },
   backBtn:      { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0, flexShrink: 0 },
   uploadBtn:    { padding: '0.5rem 0.875rem', borderRadius: '0.5rem', background: '#1a1a1a', color: '#fff', border: 'none', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
   langBtn:      { background: 'none', border: '1px solid #ddd', borderRadius: '0.25rem', padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#666' },
-  title:        { fontSize: '1.5rem', fontWeight: 700, margin: '0 0 1.25rem' },
+  title:        { fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.75rem' },
+  rules:        { background: '#fff', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.82rem', color: '#555', lineHeight: 1.5 },
+  rulesTitle:   { margin: '0 0 0.3rem', fontWeight: 700, color: '#1F5135', fontSize: '0.85rem' },
+  rulesList:    { margin: 0, paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' },
   progressTrack:{ height: 4, background: '#e8e8e8', borderRadius: 2, overflow: 'hidden', marginBottom: '1rem' },
   progressFill: { height: '100%', background: '#1a1a1a', borderRadius: 2, transition: 'width 0.15s ease' },
   errorMsg:     { color: '#c0392b', fontSize: '0.875rem', marginBottom: '0.75rem' },
-  gateMsg:      { fontSize: '0.875rem', color: '#888', background: '#f5f5f5', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem' },
+  gateMsg:      { fontSize: '0.875rem', color: '#888', background: '#fff', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem' },
   tabs:         { display: 'flex', gap: '0.5rem', marginBottom: '1rem' },
   tab:          { padding: '0.35rem 0.875rem', borderRadius: '2rem', border: '1.5px solid #ddd', background: 'none', fontSize: '0.8rem', cursor: 'pointer', color: '#555' },
   tabActive:    { background: '#1a1a1a', color: '#fff', borderColor: '#1a1a1a' },

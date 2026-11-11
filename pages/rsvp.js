@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import { useAuth } from '../src/context/AuthContext'
 import ProtectedRoute from '../src/components/ProtectedRoute'
@@ -19,7 +20,7 @@ export default function RsvpPage() {
 
 function Rsvp() {
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const t = strings[lang]
 
   const { personId } = useAuth()
@@ -29,6 +30,16 @@ function Rsvp() {
   const { isAdmin } = useAdmin()
 
   const loading = hLoading || eLoading
+
+  // "Envoyer mes réponses" → confirmation toast for a few seconds.
+  const [sent, setSent] = useState(false)
+  const toastTimer = useRef(null)
+  function showSent() {
+    clearTimeout(toastTimer.current)
+    setSent(true)
+    toastTimer.current = setTimeout(() => setSent(false), 3500)
+  }
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
 
   // The signed-in guest first, then the rest of the tribe in household order.
   const members = rawMembers
@@ -98,7 +109,16 @@ function Rsvp() {
           ))}
 
           <Summary events={events} members={members} rsvpMap={rsvpMap} lang={lang} t={t} />
+
+          {/* Answers are saved on every tap; this button only reassures the guest. */}
+          <button onClick={showSent} style={s.sendBtn}>{t.send}</button>
         </>
+      )}
+
+      {sent && (
+        <div role="status" aria-live="polite" style={s.toast}>
+          <span aria-hidden="true">✓</span> {t.sent}
+        </div>
       )}
     </main>
   )
@@ -258,7 +278,7 @@ const s = {
     margin: '0 auto',
     padding: '1.25rem',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    minHeight: '100vh',
+   
   },
   nav: {
     display: 'flex',
@@ -316,7 +336,18 @@ const s = {
   },
   toggleYes: { background: '#27ae60', color: '#fff' },
   toggleNo:  { background: '#c0392b', color: '#fff' },
-  summary: { marginBottom: '2rem' },
+  summary: { marginBottom: '1.5rem' },
+  sendBtn: {
+    display: 'block', width: '100%', marginBottom: '2.5rem', padding: '0.9rem 1rem',
+    borderRadius: '0.75rem', border: 'none', background: '#1E4A2E', color: '#fff',
+    fontSize: '1rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+  },
+  toast: {
+    position: 'fixed', left: '50%', bottom: '1.5rem', transform: 'translateX(-50%)',
+    width: 'max-content', maxWidth: 'calc(100% - 2rem)', boxSizing: 'border-box',
+    background: '#1a1a1a', color: '#fff', padding: '0.85rem 1.1rem', borderRadius: '0.75rem',
+    boxShadow: '0 6px 20px rgba(0,0,0,0.25)', fontSize: '0.95rem', fontWeight: 600, zIndex: 1000,
+  },
   summaryTitle: { fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', color: '#555' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' },
   th: { padding: '0.4rem 0.5rem', textAlign: 'center', fontWeight: 600, color: '#555', fontSize: '0.8rem' },

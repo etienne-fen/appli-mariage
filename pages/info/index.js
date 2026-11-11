@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useLang from '../../src/context/LangContext'
 import { useRouter } from 'next/router'
 import { SECTIONS } from '../../src/lib/seedInfo'
 import strings from '../../src/i18n/info'
@@ -7,7 +8,7 @@ import useAdmin from '../../src/hooks/useAdmin'
 
 export default function InfoHub() {
   const router = useRouter()
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const t = strings[lang]
   const { infoEnabled } = useSections()
   const { isAdmin } = useAdmin()
@@ -53,7 +54,7 @@ export default function InfoHub() {
 const s = {
   main: {
     maxWidth: '480px', margin: '0 auto', padding: '1.25rem',
-    fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' },
   backBtn: { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
@@ -67,7 +68,7 @@ const s = {
   card:  {
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     gap: '0.5rem', padding: '1.5rem 1rem', borderRadius: '0.75rem',
-    background: '#f5f5f5', border: 'none', cursor: 'pointer',
+    background: '#fff', border: 'none', cursor: 'pointer',
     textAlign: 'center',
   },
   cardOff: { opacity: 0.5, cursor: 'default' },

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import { useAuth } from '../src/context/AuthContext'
 import ProtectedRoute from '../src/components/ProtectedRoute'
@@ -32,7 +33,7 @@ function Profile() {
   const { household, members, loading: hLoading } = useHousehold()
   const { events, loading: eLoading } = useEvents()
   const { rsvpMap } = useRsvp(members)
-  const [lang, setLang] = useState('FR')
+  const [lang, setLang] = useLang()
   const t = strings[lang]
 
   const me = members.find(m => m.personId === personId)
@@ -176,7 +177,7 @@ function PersonCard({ person, room, pending, roommates = [], isYou = false, room
 }
 
 const s = {
-  main:     { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif', minHeight: '100vh' },
+  main:     { maxWidth: '480px', margin: '0 auto', padding: '1.25rem', fontFamily: 'system-ui, -apple-system, sans-serif' },
   nav:      { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
   backBtn:  { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
   langBtn:  { background: 'none', border: '1px solid #ddd', borderRadius: '0.25rem', padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#666' },
@@ -184,7 +185,7 @@ const s = {
   sectionTitle: { fontSize: '1.15rem', fontWeight: 700, margin: '1.75rem 0 0.75rem' },
   hint:     { color: '#aaa', fontSize: '0.875rem', margin: 0 },
   list:     { listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  card:     { background: '#f9f9f9', borderRadius: '0.75rem', padding: '1rem' },
+  card:     { background: '#fff', borderRadius: '0.75rem', padding: '1rem' },
   nameGroup:{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' },
   name:     { fontWeight: 700, fontSize: '1rem' },
   tag:      { fontSize: '0.7rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: '999px', background: '#ececec', color: '#555', whiteSpace: 'nowrap' },

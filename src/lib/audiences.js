@@ -4,8 +4,8 @@
 // persons.attendance (persons are readable by every guest).
 //
 //   friday        — "Invité vendredi" = Oui                 (Vendredi soir - Dîner)
-//   lodging       — "Logé au Domaine" = Oui                 (Samedi - Dodo)
-//   fridayLodging — both, DERIVED: friday ∩ lodging          (Vendredi soir - Dodo)
+//   lodging       — "Logé au Domaine" = Oui                 (Samedi - Nuit au Domaine)
+//   fridayLodging — both, DERIVED: friday ∩ lodging          (Vendredi soir - Nuit au Domaine)
 //
 // The lists are set at each guest-list import (src/lib/seedAccommodation.js) or
 // with `node scripts/firestore.js friday …` / `lodging sync`.

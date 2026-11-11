@@ -143,7 +143,7 @@ function addReadme(wb) {
     ['• Foyer = les personnes qui gèrent leurs réponses ensemble (couple + enfants). Des amis qui partagent une chambre sont des foyers distincts.'],
     ['• Adulte seul : laisser « Foyer » vide, un foyer est créé automatiquement. Un enfant doit toujours avoir un foyer.'],
     ['• « Invité vendredi » = Oui : le foyer voit et répond au dîner du vendredi soir (les autres ne le voient pas).'],
-    ['• « Logé au Domaine » = Oui : le foyer dort au Domaine et répond aux questions « Dodo » (celle du vendredi seulement s’il est aussi invité vendredi). Non = hôtel à proximité.'],
+    ['• « Logé au Domaine » = Oui : le foyer dort au Domaine et répond aux questions « Nuit au Domaine » (celle du vendredi seulement s’il est aussi invité vendredi). Non = hôtel à proximité.'],
     ['• Adulte seul (Foyer vide) : considéré logé au Domaine s’il a une chambre attribuée.'],
     ['• Réimporter le fichier ne touche jamais aux menus ni aux réponses déjà saisis par les invités.'],
   ]

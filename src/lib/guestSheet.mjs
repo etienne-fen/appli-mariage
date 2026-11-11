@@ -30,7 +30,7 @@ export const SHEETS = {
       { key: 'displayName', header: 'Nom affiché', width: 26, help: 'Ex : « Louis & Lucy ». Vide → prénoms des membres.' },
       { key: 'primaryContactId', header: 'Contact principal (ID)', width: 20, ref: 'persons', help: 'ID invité du référent du foyer. Vide → premier adulte.' },
       { key: 'fridayInvited', header: 'Invité vendredi', width: 15, list: YES_NO, help: 'Oui = voit et répond au dîner du vendredi soir.' },
-      { key: 'lodgedOnSite', header: 'Logé au Domaine', width: 16, list: YES_NO, help: 'Oui = dort au Domaine (questions « Dodo » ; vendredi seulement si aussi invité vendredi). Non = hôtel à proximité.' },
+      { key: 'lodgedOnSite', header: 'Logé au Domaine', width: 16, list: YES_NO, help: 'Oui = dort au Domaine (questions « Nuit au Domaine » ; vendredi seulement si aussi invité vendredi). Non = hôtel à proximité.' },
     ],
   },
   rooms: {

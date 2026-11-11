@@ -24,7 +24,9 @@
 3. Media & Sharing
    - Photo and video uploads to Cloud Storage (guest-contributions album)
    - Gallery page with lazy loading and simple moderation
-   - Cloud Function mirrors approved uploads to a shared Google Photos album or Google Drive folder via Google APIs (guests keep a permanent copy outside the app)
+   - `node scripts/photos-to-google.js` (run by the admin, no Cloud Function) copies approved photos
+     into an album of the admin's own Google Photos (for a printed album). Idempotent: marks
+     `photos/{id}.googlePhotos`; album id in `settings/googlePhotos`. OAuth client + token in ~/.secrets.
 4. Admin tools (secure)
    - Admin-only dashboard to manage guests, send notices (outside app), and moderate uploads
 5. Offline / PWA polish
