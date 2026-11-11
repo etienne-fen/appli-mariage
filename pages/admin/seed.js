@@ -39,6 +39,8 @@ function Seed() {
   const [unmatched, setUnmatched] = useState(null) // reconciliation report, once loaded
   const [accBusy,   setAccBusy]   = useState(false)
   const [accResult, setAccResult] = useState(null) // import summary, once imported
+  const [check,     setCheck]     = useState(null) // { errors, warnings } for a spreadsheet
+  const blocked = Boolean(check?.errors.length)
 
   async function handleSeedEvents() {
     setEventsBusy(true); setEventsStatus(null)
@@ -54,13 +56,26 @@ function Seed() {
     finally { setInfoBusy(false) }
   }
 
+  // Accepts the guest spreadsheet (.xlsx, downloaded from Google Sheets) or a
+  // legacy JSON export. The spreadsheet is checked before anything is written.
   async function handleFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setAccError(null); setAccData(null); setUnmatched(null); setAccResult(null)
+    setAccError(null); setAccData(null); setUnmatched(null); setAccResult(null); setCheck(null)
     try {
-      const text = await file.text()
-      const parsed = JSON.parse(text)
+      let parsed
+      if (/\.xlsx$/i.test(file.name)) {
+        const [{ default: ExcelJS }, { parseGuestSheets, workbookToSheets }] = await Promise.all([
+          import('exceljs'), import('../../src/lib/guestSheet.mjs'),
+        ])
+        const wb = new ExcelJS.Workbook()
+        await wb.xlsx.load(await file.arrayBuffer())
+        const result = parseGuestSheets(workbookToSheets(wb))
+        setCheck({ errors: result.errors, warnings: result.warnings })
+        parsed = result.data
+      } else {
+        parsed = JSON.parse(await file.text())
+      }
       setAccData(parsed)
       setUnmatched(await reconcileInvitedGuests(parsed.personnes))
     } catch (e) {
@@ -84,8 +99,8 @@ function Seed() {
 
       <SeedBlock
         title="Events"
-        description="RSVP segments. 🔒 = Friday invitees only. Re-seeding overwrites times/locations edited in Firestore."
-        items={EVENT_SEEDS.map(e => `${e.audience === 'friday' ? '🔒 ' : ''}${e.title.FR} / ${e.title.EN} — ${e.day.FR} ${e.timeStart}`)}
+        description="Questions de « Mes réponses ». 🔒 = invités du vendredi · 🛏️ = logés au Domaine. Re-seeder écrase les horaires/lieux modifiés dans Firestore."
+        items={EVENT_SEEDS.map(e => `${{ friday: '🔒 ', lodging: '🛏️ ', fridayLodging: '🔒🛏️ ' }[e.audience] ?? ''}${e.day.FR} — ${e.title.FR}${e.timeStart ? ` (${e.timeStart})` : ''}`)}
         onSeed={handleSeedEvents}
         busy={eventsBusy}
         status={eventsStatus}
@@ -101,25 +116,44 @@ function Seed() {
       />
 
       <section style={s.block}>
-        <h2 style={s.h2}>Accommodation (rooms / persons / households)</h2>
+        <h2 style={s.h2}>Liste des invités (Google Sheets / Excel)</h2>
         <p style={s.desc}>
-          Upload a JSON export matching the shape in docs/data-model.md (see
-          docs/seed-example.json). Safe to re-run — existing meal/RSVP answers are
-          never overwritten.
+          Dans Google Sheets : Fichier → Télécharger → Microsoft Excel (.xlsx), puis
+          choisissez le fichier ici. Il est contrôlé avant tout import. Réimporter
+          ne touche jamais aux menus ni aux réponses déjà saisis.
         </p>
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/json"
+          accept=".xlsx,application/json"
           onChange={handleFile}
           style={s.fileInput}
         />
 
         {accData && (
           <p style={s.desc}>
-            Loaded: {accData.chambres?.length ?? 0} rooms, {accData.personnes?.length ?? 0} persons,{' '}
-            {accData.foyers?.length ?? 0} households.
+            Lu : {accData.personnes?.length ?? 0} invités, {accData.foyers?.length ?? 0} foyers,{' '}
+            {accData.chambres?.length ?? 0} chambres
+            {accData.fridayHouseholdIds && `, ${accData.fridayHouseholdIds.length} foyer(s) invité(s) vendredi`}
+            {accData.lodgingHouseholdIds && `, ${accData.lodgingHouseholdIds.length} foyer(s) logé(s) au Domaine`}.
           </p>
+        )}
+
+        {check && (
+          check.errors.length === 0
+            ? <p style={s.ok}>✓ Aucune erreur bloquante.</p>
+            : (
+              <div>
+                <p style={s.err}>✗ {check.errors.length} erreur(s) à corriger dans le fichier avant import :</p>
+                <ul style={s.list}>{check.errors.map((m, i) => <li key={i} style={s.li}>{m}</li>)}</ul>
+              </div>
+            )
+        )}
+        {check?.warnings.length > 0 && (
+          <details style={s.details}>
+            <summary style={s.warnSummary}>⚠ {check.warnings.length} avertissement(s) (import possible)</summary>
+            <ul style={s.list}>{check.warnings.map((m, i) => <li key={i} style={s.li}>{m}</li>)}</ul>
+          </details>
         )}
 
         {unmatched && (
@@ -137,16 +171,18 @@ function Seed() {
 
         <button
           onClick={handleImport}
-          disabled={!accData || accBusy}
-          style={{ ...s.btn, opacity: !accData || accBusy ? 0.5 : 1 }}
+          disabled={!accData || accBusy || blocked}
+          style={{ ...s.btn, opacity: !accData || accBusy || blocked ? 0.5 : 1 }}
         >
-          {accBusy ? 'Importing…' : 'Import'}
+          {accBusy ? 'Import en cours…' : 'Importer'}
         </button>
 
         {accResult && (
           <p style={s.ok}>
-            ✓ {accResult.rooms} rooms, {accResult.households} households,{' '}
-            {accResult.personsCreated} persons created, {accResult.personsUpdated} persons updated.
+            ✓ {accResult.rooms} chambres, {accResult.households} foyers,{' '}
+            {accResult.personsCreated} invités créés, {accResult.personsUpdated} mis à jour
+            {accResult.fridayHouseholds !== undefined && `, ${accResult.fridayHouseholds} foyer(s) invité(s) vendredi`}
+            {`, ${accResult.lodgingHouseholds} foyer(s) logé(s) au Domaine`}.
           </p>
         )}
         {accError && <p style={s.err}>{accError}</p>}
@@ -169,4 +205,6 @@ const s = {
   fileInput: { display: 'block', marginBottom: '1rem', fontSize: '0.875rem' },
   ok:    { marginTop: '0.75rem', color: '#27ae60', fontSize: '0.875rem' },
   err:   { marginTop: '0.75rem', color: '#c0392b', fontSize: '0.875rem' },
+  details: { marginBottom: '1rem' },
+  warnSummary: { cursor: 'pointer', color: '#856404', fontSize: '0.875rem', marginBottom: '0.5rem' },
 }

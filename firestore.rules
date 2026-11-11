@@ -27,6 +27,16 @@ service cloud.firestore {
       return isInAudience('friday');
     }
 
+    // Households staying on the Domaine ("Logé au Domaine" = Oui in the guest list).
+    function isLodgingGuest() {
+      return isInAudience('lodging');
+    }
+
+    // Friday invitees who also stay on the Domaine (DERIVED: friday ∩ lodging).
+    function isFridayLodgingGuest() {
+      return isInAudience('fridayLodging');
+    }
+
     match /admins/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow write: if false; // manage via Firebase console only
@@ -67,13 +77,36 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isSignedIn() && request.auth.uid == guestId);
     }
 
-    // Every event has audience "all" or "friday". Clients must query with
-    // where('audience', '==', ...) — an unfiltered query is rejected.
+    // Every event has audience "all", "friday", "lodging" or "fridayLodging".
+    // Clients must query with where('audience', '==', ...) — an unfiltered
+    // query is rejected.
     match /events/{eventId} {
       allow read: if resource.data.audience == 'all'
         || (resource.data.audience == 'friday' && isFridayGuest())
+        || (resource.data.audience == 'lodging' && isLodgingGuest())
+        || (resource.data.audience == 'fridayLodging' && isFridayLodgingGuest())
         || isAdmin();
       allow write: if isAdmin();
+    }
+
+    // Answers to "fridayLodging" events (Vendredi soir - Dodo).
+    match /fridayLodgingRsvps/{personId} {
+      allow read: if isFridayLodgingGuest() || isAdmin();
+      allow write: if isAdmin() || (isFridayLodgingGuest()
+        && request.resource.data.householdId ==
+           get(/databases/$(database)/documents/persons/$(personId)).data.householdId
+        && request.auth.token.phone_number in
+           get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.managerPhones);
+    }
+
+    // Answers to "lodging" events (Samedi - Dodo), same model as fridayRsvps.
+    match /lodgingRsvps/{personId} {
+      allow read: if isLodgingGuest() || isAdmin();
+      allow write: if isAdmin() || (isLodgingGuest()
+        && request.resource.data.householdId ==
+           get(/databases/$(database)/documents/persons/$(personId)).data.householdId
+        && request.auth.token.phone_number in
+           get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.managerPhones);
     }
 
     // Answers to invitation-only events live here rather than in
@@ -103,8 +136,10 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isSignedIn() && resource.data.guestId == request.auth.uid);
     }
 
+    // settings/sections = admin on/off switches (menu + info pages); public
+    // because the info pages are readable without signing in.
     match /settings/{settingId} {
-      allow read: if isSignedIn();
+      allow read: if settingId == 'sections' || isSignedIn();
       allow write: if isAdmin();
     }
 

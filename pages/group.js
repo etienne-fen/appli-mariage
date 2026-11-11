@@ -8,6 +8,8 @@ import useRooms from '../src/hooks/useRooms'
 import useEvents from '../src/hooks/useEvents'
 import useRsvp from '../src/hooks/useRsvp'
 import { formatPhone } from '../src/lib/phone'
+import useAdmin from '../src/hooks/useAdmin'
+import useSections from '../src/hooks/useSections'
 import strings from '../src/i18n/group'
 
 // "Mon profil": the signed-in guest, then "Ma tribu" (the other members of
@@ -48,7 +50,12 @@ function Profile() {
       return val !== true && val !== false
     }).length
 
-  const loading = hLoading || eLoading
+  // Rooms switch (admin): guests only see rooms once the plan is final.
+  const { isAdmin } = useAdmin()
+  const { roomsVisible, loading: sLoading } = useSections()
+  const roomMode = roomsVisible ? 'shown' : isAdmin ? 'adminOnly' : 'hidden'
+
+  const loading = hLoading || eLoading || sLoading
   const goRsvp = () => router.push('/rsvp')
 
   return (
@@ -76,6 +83,8 @@ function Profile() {
             pending={pendingFor(me.personId)}
             roommates={roommates}
             isYou
+            roomMode={roomMode}
+            offsite={household?.lodgedOnSite === false}
             onAnswer={goRsvp}
             onShowMap={() => router.push('/info/accommodation')}
             t={t}
@@ -91,6 +100,8 @@ function Profile() {
                       person={m}
                       room={rooms[m.roomId]}
                       pending={pendingFor(m.personId)}
+                      roomMode={roomMode}
+                      offsite={household?.lodgedOnSite === false}
                       onAnswer={goRsvp}
                       t={t}
                     />
@@ -105,8 +116,11 @@ function Profile() {
   )
 }
 
-function PersonCard({ person, room, pending, roommates = [], isYou = false, onAnswer, onShowMap, t }) {
-  const clickable = Boolean(room && onShowMap)
+// roomMode: 'shown' | 'adminOnly' (switch off, admin still sees it, tagged) | 'hidden'
+// offsite: the household is not staying on the Domaine ("Logé au Domaine" = Non).
+function PersonCard({ person, room, pending, roommates = [], isYou = false, roomMode = 'shown', offsite = false, onAnswer, onShowMap, t }) {
+  const roomHidden = roomMode === 'hidden'
+  const clickable = Boolean(room && onShowMap && !roomHidden && !offsite)
   return (
     <div style={s.card}>
       <div style={s.nameGroup}>
@@ -129,7 +143,12 @@ function PersonCard({ person, room, pending, roommates = [], isYou = false, onAn
           {t.roomTitle}
           {clickable && <span style={s.mapLink}>🗺️ {t.seeOnMap}</span>}
         </p>
-        {person.roomId && room === undefined ? (
+        {roomMode === 'adminOnly' && !offsite && <p style={s.adminTag}>🔒 {t.roomsHiddenAdmin}</p>}
+        {offsite ? (
+          <p style={s.hint}>{t.roomOffsite}</p>
+        ) : roomHidden ? (
+          <p style={s.hint}>{t.roomSoon}</p>
+        ) : person.roomId && room === undefined ? (
           <p style={s.hint}>{t.loading}</p>
         ) : !room ? (
           <p style={s.hint}>{t.noRoom}</p>
@@ -173,6 +192,7 @@ const s = {
   block:    { marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #eee' },
   blockLabel: { margin: '0 0 0.25rem', fontSize: '0.7rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' },
   blockLink: { cursor: 'pointer', borderRadius: '0.5rem', margin: '0.75rem -0.5rem 0', padding: '0.75rem 0.5rem 0.5rem', background: '#fff', border: '1.5px solid #E8A020' },
+  adminTag: { margin: '0 0 0.3rem', fontSize: '0.72rem', color: '#856404', background: '#fff3cd', borderRadius: '0.35rem', padding: '0.2rem 0.45rem', display: 'inline-block' },
   mapLink:  { color: '#8a5a00', textTransform: 'none', letterSpacing: 0, fontSize: '0.75rem', whiteSpace: 'nowrap' },
   roomName: { margin: 0, fontWeight: 600, fontSize: '0.95rem' },
   meta:     { margin: '0.15rem 0 0', fontSize: '0.8rem', color: '#888' },

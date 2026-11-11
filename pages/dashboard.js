@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../src/context/AuthContext'
 import ProtectedRoute from '../src/components/ProtectedRoute'
+import useAdmin from '../src/hooks/useAdmin'
+import useSections from '../src/hooks/useSections'
 
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif"
 const GREEN  = '#1E4A2E'
@@ -18,9 +20,11 @@ const NAV_ITEMS = [
   { path: '/photos',     icon: '📸', FR: 'Photos',         EN: 'Photos'        },
 ]
 
+const ADMIN_ITEM = { path: '/admin/settings', icon: '⚙️', FR: 'Réglages (admin)', EN: 'Settings (admin)' }
+
 const t = {
-  FR: { welcome: 'Bienvenue', explore: 'Explorer', signOut: 'Déconnexion' },
-  EN: { welcome: 'Welcome',   explore: 'Explore',  signOut: 'Sign out'    },
+  FR: { welcome: 'Bienvenue', explore: 'Explorer', signOut: 'Déconnexion', soon: 'Bientôt disponible', hidden: 'masqué aux invités' },
+  EN: { welcome: 'Welcome',   explore: 'Explore',  signOut: 'Sign out',    soon: 'Coming soon',        hidden: 'hidden from guests' },
 }
 
 export default function DashboardPage() {
@@ -37,6 +41,18 @@ function Dashboard() {
   const [lang, setLang]         = useState('FR')
   const [menuOpen, setMenuOpen] = useState(false)
   const strings = t[lang]
+  const { isAdmin } = useAdmin()
+  const { menuEnabled } = useSections()
+
+  // The Menu is switchable by admins: closed → greyed "coming soon" for guests,
+  // still reachable (and tagged) for admins.
+  const navItems = [
+    ...NAV_ITEMS.map(item => {
+      if (item.path !== '/meals' || menuEnabled) return item
+      return isAdmin ? { ...item, tag: strings.hidden } : { ...item, disabled: true, tag: strings.soon }
+    }),
+    ...(isAdmin ? [ADMIN_ITEM] : []),
+  ]
 
   // First name from the signed-in person's record; falls back to nothing while loading
   const firstName = person?.prenom ?? null
@@ -90,6 +106,7 @@ function Dashboard() {
       {/* Drawer */}
       <Drawer
         open={menuOpen}
+        items={navItems}
         lang={lang}
         strings={strings}
         onClose={() => setMenuOpen(false)}
@@ -102,7 +119,7 @@ function Dashboard() {
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 
-function Drawer({ open, lang, strings, onClose, onNav, onSignOut }) {
+function Drawer({ open, items, lang, strings, onClose, onNav, onSignOut }) {
   return (
     <>
       {/* Dimmed overlay */}
@@ -130,10 +147,19 @@ function Drawer({ open, lang, strings, onClose, onNav, onSignOut }) {
 
         {/* Nav links */}
         <nav style={d.nav}>
-          {NAV_ITEMS.map(item => (
-            <button key={item.path} onClick={() => onNav(item.path)} style={d.navItem}>
+          {items.map(item => (
+            <button
+              key={item.path}
+              onClick={() => !item.disabled && onNav(item.path)}
+              disabled={item.disabled}
+              aria-disabled={item.disabled || undefined}
+              style={{ ...d.navItem, ...(item.disabled ? d.navDisabled : {}) }}
+            >
               <span style={d.navIcon}>{item.icon}</span>
-              <span style={d.navLabel}>{item[lang]}</span>
+              <span style={d.navText}>
+                <span style={d.navLabel}>{item[lang]}</span>
+                {item.tag && <span style={d.navTag}>{item.tag}</span>}
+              </span>
             </button>
           ))}
         </nav>
@@ -377,6 +403,9 @@ const d = {
   },
   navIcon:  { fontSize: '1.2rem', flexShrink: 0 },
   navLabel: { fontFamily: SERIF, fontSize: '1rem', color: GREEN, fontWeight: 600 },
+  navText:  { display: 'flex', flexDirection: 'column', alignItems: 'flex-start' },
+  navTag:   { fontFamily: SERIF, fontStyle: 'italic', fontSize: '0.75rem', color: `${GREEN}99` },
+  navDisabled: { opacity: 0.45, cursor: 'default' },
 
   signOut: {
     margin: '0.5rem 1.25rem 0',

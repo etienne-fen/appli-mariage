@@ -1,10 +1,12 @@
 import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'
 import { firestore } from '../firebase/firebaseClient'
 import { syncAudiencePhones } from './access'
+import { RESTRICTED_AUDIENCES, intersect } from './audiences'
 
-// Imports a { chambres, personnes, foyers } export (see docs/data-model.md and
-// docs/seed-example.json for the expected shape) into the rooms/persons/households
-// collections. Idempotent: re-running with the same file is safe.
+// Imports { chambres, personnes, foyers, fridayHouseholdIds? } into the
+// rooms/persons/households collections. Produced from the guest spreadsheet by
+// src/lib/guestSheet.mjs (or a legacy JSON, see docs/seed-example.json).
+// Idempotent: re-running with the same file is safe.
 //
 // - Existing persons are merged on structural fields only — mealPreferences and
 //   attendance already saved by a guest are never touched.
@@ -19,7 +21,7 @@ function normalizePhone(v) {
   return v && v.trim() ? v.trim() : null
 }
 
-export async function importAccommodation({ chambres = [], personnes = [], foyers = [] }) {
+export async function importAccommodation({ chambres = [], personnes = [], foyers = [], fridayHouseholdIds, lodgingHouseholdIds }) {
   const summary = { rooms: 0, households: 0, personsCreated: 0, personsUpdated: 0 }
 
   // Rooms: straight upsert, no derived fields.
@@ -73,8 +75,39 @@ export async function importAccommodation({ chambres = [], personnes = [], foyer
     }
   }))
 
-  // managerPhones may have changed → refresh the Friday invitees' phone list.
-  await syncAudiencePhones('friday')
+  // Invitation lists (see src/lib/audiences.js). When the file says who's
+  // invited / lodged (spreadsheet import), it replaces the list.
+  const setAudience = (name, ids) =>
+    setDoc(doc(firestore, 'access', name), { householdIds: ids, phones: [] }, { merge: true })
+
+  let friday = fridayHouseholdIds
+  if (Array.isArray(friday)) {
+    await setAudience('friday', friday)
+    summary.fridayHouseholds = friday.length
+  } else {
+    const snap = await getDoc(doc(firestore, 'access', 'friday'))
+    friday = snap.exists() ? snap.data().householdIds ?? [] : []
+  }
+
+  // "Logé au Domaine" (Dodo questions). Legacy JSON without the column:
+  // households with a member assigned to a room.
+  const lodging = Array.isArray(lodgingHouseholdIds)
+    ? lodgingHouseholdIds
+    : [...new Set(personnes.filter(p => p.householdId && p.roomId).map(p => p.householdId))]
+  await setAudience('lodging', lodging)
+  summary.lodgingHouseholds = lodging.length
+  // Mirror on each household (readable by guests: "Mon profil" shows
+  // "hébergement à l'extérieur" when false). Spreadsheet imports already set it.
+  if (!Array.isArray(lodgingHouseholdIds)) {
+    const set = new Set(lodging)
+    await Promise.all(foyers.map(f => setDoc(doc(firestore, 'households', f.householdId), { lodgedOnSite: set.has(f.householdId) }, { merge: true })))
+  }
+
+  // Vendredi soir - Dodo = invited on Friday AND lodged on site.
+  await setAudience('fridayLodging', intersect(friday, lodging))
+
+  // managerPhones may have changed → rebuild every list's phones.
+  await Promise.all(RESTRICTED_AUDIENCES.map(syncAudiencePhones))
 
   return summary
 }

@@ -76,16 +76,22 @@ rooms/{roomId}                  — slug `batiment-niveau-chambre`
 
 info/{sectionId}                — public content pages (no auth required to read)
   sectionId: schedule | dresscode | accommodation | faq | contact
-             + schedule-friday (Friday invitees only, shown under the Programme)
+             + schedule-friday: FULL alternative Programme, Friday invitees only; they see it
+               INSTEAD of `schedule` (VARIANTS in pages/info/[section].js; admins get tabs)
   FR: string                   — HTML from the rich-text editor
   EN: string
   // Edit content directly in Firestore console — no redeployment needed
   // Seed structure defined in src/lib/seedInfo.js
 
-events/{eventId}                — public: ceremony|cocktail|dinner|party|brunch
-                                  friday-only: friday-dinner|saturday-breakfast|saturday-lunch
-  audience: "all" | "friday"   — REQUIRED; rules hide docs without it. Clients must query
-                                 where('audience','==',…) (unfiltered queries are rejected)
+events/{eventId}                — the 6 "Mes réponses" questions:
+                                  friday-dinner (friday), friday-night (fridayLodging)
+                                  ceremony, dinner = "Dîner & Soirée" (all; Menu relies on `dinner`)
+                                  saturday-night (lodging), brunch (all)
+  audience: "all" | "friday" | "lodging" | "fridayLodging" — REQUIRED; rules hide docs without it.
+                                 friday = "Invité vendredi", lodging = "Logé au Domaine" (Foyers tab),
+                                 fridayLodging = both (derived). Clients must
+                                 query where('audience','==',…) (unfiltered queries are rejected).
+                                 Restricted audiences listed in src/lib/audiences.js
   dayKey: "friday" | "saturday" | "sunday" — groups "Mes réponses" into one section per day
   title: { FR, EN }            — bilingual label
   day:   { FR, EN }            — e.g. "Samedi soir" / "Saturday evening"
@@ -100,8 +106,17 @@ access/{audience}               — invitation lists, admin-only (guests can nev
                                  (`node scripts/firestore.js friday sync`; import does it too)
 
 fridayRsvps/{personId}          — answers to audience:"friday" events, readable by invitees only
+lodgingRsvps/{personId}         — same for audience:"lodging" ("Logé au Domaine"; also mirrored as
+fridayLodgingRsvps/{personId}     households.lodgedOnSite for "Mon profil") and "fridayLodging".
+                                  Lists set at guest import or `node scripts/firestore.js friday|lodging …`
+                                  (both rebuild access/fridayLodging = friday ∩ lodging)
   householdId: string
   attendance: { [eventId]: true | false | null }
+
+settings/sections               — admin switches (public read): { menu: bool, rooms: bool, info: { [sectionId]: bool } }
+                                  rooms OFF = guests don't see their room (profile + map highlight); UI-level only
+                                  Off = guests see the entry greyed "Bientôt disponible"; admins still open it.
+                                  Menu defaults to OFF (opens ~2 months before the wedding). UI: /admin/settings
 
 photos/{photoId}                — storagePath + guestId + eventId + status (pending/approved/rejected)
 notes/{noteId}                  — guestbook entries; guestId + content + createdAt
@@ -112,7 +127,17 @@ there are no separate `meals`/`rsvps` collections. Exception: answers to Friday-
 events go to `fridayRsvps`, because `persons` is readable by every signed-in guest and
 must never reveal who is invited on Friday.
 
+**Security rules:** publish with `node scripts/deploy-rules.js` (`--diff` to compare with live).
+
 **Invitation-only content rule:** anything for a restricted audience must be unreadable
-by others at the security-rules level, not just hidden in the UI. Import via the "Accommodation" block
-on `/admin/seed`, using `src/lib/seedAccommodation.js` (idempotent; re-importing never
-overwrites `mealPreferences`/`attendance` already saved by a guest).
+by others at the security-rules level, not just hidden in the UI.
+
+**Guest list workflow (Google Sheets):** `node scripts/guests-template.js` builds
+`~/Downloads/invites-mariage.xlsx` from Firestore (+ docs/seed-example.json) with tabs
+Invités / Foyers / Chambres. The admin edits it in Google Sheets, downloads it as .xlsx and
+uploads it on `/admin/seed`. The format, parsing and validation live in ONE place:
+`src/lib/guestSheet.mjs` (used by both the script and the page) — change columns there only.
+Import goes through `src/lib/seedAccommodation.js` (idempotent; never overwrites
+`mealPreferences`/`attendance`; "Invité vendredi" / "Logé au Domaine" replace
+`access/friday` / `access/lodging` and rebuild `access/fridayLodging`;
+an adult with no Foyer gets an auto household `hh-<personId>`). Import never deletes anyone.

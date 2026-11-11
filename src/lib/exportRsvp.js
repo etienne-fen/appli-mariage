@@ -1,14 +1,21 @@
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
 import { firestore } from '../firebase/firebaseClient'
 import { downloadWorkbook, exportedOn, newWorkbook, styleHeader } from './xlsx'
+import { RESTRICTED_AUDIENCES, rsvpCollection } from './audiences'
+
+const AUDIENCE_NOTE = {
+  friday: ' (invités du vendredi)',
+  lodging: ' (logés au Domaine)',
+  fridayLodging: ' (vendredi + logés au Domaine)',
+}
 
 // Admin export of every "Mes réponses" answer as .xlsx.
 //   Sheet "Réponses"      one row per guest, one column per event (all events,
-//                         Friday ones included; "—" when the household isn't invited).
+//                         restricted ones included; "—" when not in that audience).
 //   Sheet "Récapitulatif" per event: yes (adults / children), no, no answer.
 //   Sheet "À relancer"    households that still have unanswered questions.
-// Admin-only: the security rules let admins read every event, access/friday
-// and fridayRsvps.
+// Admin-only: the security rules let admins read every event, access/* and
+// the restricted answer collections.
 
 const DAYS = { friday: 'Vendredi', saturday: 'Samedi', sunday: 'Dimanche' }
 const NOT_INVITED = '—'
@@ -16,26 +23,34 @@ const answer = v => (v === true ? 'Oui' : v === false ? 'Non' : 'Sans réponse')
 const COLORS = { Oui: 'FF27AE60', Non: 'FFC0392B', 'Sans réponse': 'FFB0B0B0' }
 
 export async function exportRsvpXlsx() {
-  const [personsSnap, householdsSnap, eventsSnap, fridayRsvpsSnap, fridayAccess] = await Promise.all([
+  const [personsSnap, householdsSnap, eventsSnap, ...perAudience] = await Promise.all([
     getDocs(collection(firestore, 'persons')),
     getDocs(collection(firestore, 'households')),
     getDocs(collection(firestore, 'events')),
-    getDocs(collection(firestore, 'fridayRsvps')),
-    getDoc(doc(firestore, 'access', 'friday')),
+    ...RESTRICTED_AUDIENCES.map(a => Promise.all([
+      getDoc(doc(firestore, 'access', a)),
+      getDocs(collection(firestore, rsvpCollection(a))),
+    ])),
   ])
 
   const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order)
   const householdName = Object.fromEntries(householdsSnap.docs.map(d => [d.id, d.data().displayName || d.id]))
-  const fridayHouseholds = new Set(fridayAccess.exists() ? fridayAccess.data().householdIds ?? [] : [])
-  const fridayAnswers = Object.fromEntries(fridayRsvpsSnap.docs.map(d => [d.id, d.data().attendance ?? {}]))
+  // { [audience]: { households: Set, answers: { [personId]: { [eventId]: val } } } }
+  const audiences = Object.fromEntries(RESTRICTED_AUDIENCES.map((a, i) => {
+    const [accessSnap, rsvpsSnap] = perAudience[i]
+    return [a, {
+      households: new Set(accessSnap.exists() ? accessSnap.data().householdIds ?? [] : []),
+      answers: Object.fromEntries(rsvpsSnap.docs.map(d => [d.id, d.data().attendance ?? {}])),
+    }]
+  }))
 
   const guests = personsSnap.docs.map(d => {
     const p = d.data()
-    const invitedFriday = fridayHouseholds.has(p.householdId)
     const answers = {}
     events.forEach(e => {
-      if (e.audience === 'friday') {
-        answers[e.id] = invitedFriday ? answer(fridayAnswers[d.id]?.[e.id]) : NOT_INVITED
+      const aud = audiences[e.audience]
+      if (aud) {
+        answers[e.id] = aud.households.has(p.householdId) ? answer(aud.answers[d.id]?.[e.id]) : NOT_INVITED
       } else {
         answers[e.id] = answer(p.attendance?.[e.id])
       }
@@ -45,12 +60,13 @@ export async function exportRsvpXlsx() {
       prenom: p.prenom ?? '',
       type: p.kind === 'child' ? 'Enfant' : 'Adulte',
       foyer: householdName[p.householdId] ?? '',
-      vendredi: invitedFriday ? 'Oui' : 'Non',
+      vendredi: audiences.friday.households.has(p.householdId) ? 'Oui' : 'Non',
+      logement: audiences.lodging.households.has(p.householdId) ? 'Oui' : 'Non',
       answers,
     }
   }).sort((a, b) => a.foyer.localeCompare(b.foyer) || a.prenom.localeCompare(b.prenom))
 
-  const eventHeader = e => `${DAYS[e.dayKey] ?? ''} ${e.timeStart ?? ''}\n${e.title?.FR ?? e.id}`.trim()
+  const eventHeader = e => `${DAYS[e.dayKey] ?? ''} ${e.timeStart ?? ''}`.trim() + `\n${e.title?.FR ?? e.id}`
   const wb = await newWorkbook()
 
   // ── Sheet 1: one row per guest ──
@@ -61,6 +77,7 @@ export async function exportRsvpXlsx() {
     { header: 'Adulte / Enfant', key: 'type', width: 12 },
     { header: 'Foyer', key: 'foyer', width: 22 },
     { header: 'Invité vendredi', key: 'vendredi', width: 11 },
+    { header: 'Logé au Domaine', key: 'logement', width: 11 },
     ...events.map(e => ({ header: eventHeader(e), key: e.id, width: 15 })),
   ]
   guests.forEach(g => ws.addRow({ ...g, ...g.answers }))
@@ -92,7 +109,7 @@ export async function exportRsvpXlsx() {
     const yesAdults = yes.filter(g => g.type === 'Adulte').length
     const row = sum.addRow([
       DAYS[e.dayKey] ?? '', e.timeStart ?? '',
-      `${e.title?.FR ?? e.id}${e.audience === 'friday' ? ' (sur invitation)' : ''}`,
+      `${e.title?.FR ?? e.id}${AUDIENCE_NOTE[e.audience] ?? ''}`,
       yesAdults, yes.length - yesAdults, yes.length,
       concerned.filter(g => g.answers[e.id] === 'Non').length,
       concerned.filter(g => g.answers[e.id] === 'Sans réponse').length,

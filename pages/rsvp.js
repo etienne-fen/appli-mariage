@@ -172,9 +172,6 @@ function EventCard({ event, members, attendance, onToggle, lang, t }) {
         <span style={s.cardTitle}>{event.title[lang]}</span>
         <span style={s.cardMeta}>{event.timeStart}</span>
       </div>
-      {event.location && (
-        <p style={s.cardLocation}>{event.location}</p>
-      )}
       <ul style={s.memberList}>
         {members.map(m => {
           const val = attendance[m.memberId] ?? null
@@ -301,11 +298,10 @@ const s = {
   },
   cardHeader: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    marginBottom: '0.25rem',
+    marginBottom: '0.75rem',
   },
   cardTitle: { fontWeight: 700, fontSize: '1rem' },
   cardMeta: { fontSize: '0.8rem', color: '#888' },
-  cardLocation: { fontSize: '0.8rem', color: '#aaa', margin: '0 0 0.75rem' },
   memberList: { listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' },
   memberRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' },
   memberName: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', flex: 1, minWidth: 0 },

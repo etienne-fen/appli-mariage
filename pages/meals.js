@@ -6,6 +6,7 @@ import useHousehold from '../src/hooks/useHousehold'
 import useMeals from '../src/hooks/useMeals'
 import useAdmin from '../src/hooks/useAdmin'
 import AdminExportButton from '../src/components/AdminExportButton'
+import useSections from '../src/hooks/useSections'
 import MEAL_OPTIONS from '../src/lib/mealOptions'
 import strings from '../src/i18n/meals'
 
@@ -22,7 +23,10 @@ function Meals() {
   const { members: rawMembers, loading } = useHousehold()
   const { mealMap, saveMeal } = useMeals(rawMembers)
 
-  const { isAdmin } = useAdmin()
+  const { isAdmin, loading: adminLoading } = useAdmin()
+  const { menuEnabled, loading: sectionsLoading } = useSections()
+  const closedForGuests = !menuEnabled
+  const showClosedPage = closedForGuests && !isAdmin && !adminLoading && !sectionsLoading
 
   // The signed-in guest first, then the rest of the tribe.
   const members = rawMembers
@@ -59,6 +63,16 @@ function Meals() {
       </nav>
 
       <h1 style={s.title}>{t.title}</h1>
+
+      {showClosedPage ? (
+        <div style={s.soon}>
+          <p style={s.soonIcon} aria-hidden="true">🍽️</p>
+          <p style={s.soonTitle}>{t.soonTitle}</p>
+          <p style={s.soonText}>{t.soonText}</p>
+        </div>
+      ) : (<>
+
+      {isAdmin && closedForGuests && <p style={s.adminClosed}>🔒 {t.adminClosed}</p>}
 
       <div style={s.banner}>
         <span style={s.bannerIcon} aria-hidden="true">🍽️</span>
@@ -97,6 +111,7 @@ function Meals() {
           )}
         </>
       )}
+      </>)}
     </main>
   )
 }
@@ -204,6 +219,11 @@ const s = {
     padding: '0.85rem 1rem', margin: '0.75rem 0 1rem',
   },
   bannerIcon: { fontSize: '1.4rem', lineHeight: 1 },
+  soon: { textAlign: 'center', background: '#f5f5f5', borderRadius: '0.75rem', padding: '2rem 1.25rem', marginTop: '1rem' },
+  soonIcon: { fontSize: '2.2rem', margin: 0 },
+  soonTitle: { fontSize: '1.1rem', fontWeight: 700, margin: '0.5rem 0 0.25rem' },
+  soonText: { fontSize: '0.875rem', color: '#777', margin: 0 },
+  adminClosed: { fontSize: '0.8rem', color: '#856404', background: '#fff3cd', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', margin: '0.5rem 0 0' },
   bannerTitle: { margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1E4A2E' },
   bannerText: { margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#555' },
   sectionTitle: { fontSize: '1.15rem', fontWeight: 700, margin: '0.5rem 0 0.75rem' },

@@ -2,11 +2,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { SECTIONS } from '../../src/lib/seedInfo'
 import strings from '../../src/i18n/info'
+import useSections from '../../src/hooks/useSections'
+import useAdmin from '../../src/hooks/useAdmin'
 
 export default function InfoHub() {
   const router = useRouter()
   const [lang, setLang] = useState('FR')
   const t = strings[lang]
+  const { infoEnabled } = useSections()
+  const { isAdmin } = useAdmin()
 
   return (
     <main style={s.main}>
@@ -23,16 +27,24 @@ export default function InfoHub() {
       <p style={s.sub}>{t.hubSub}</p>
 
       <div style={s.grid}>
-        {SECTIONS.map(sec => (
-          <button
-            key={sec.id}
-            onClick={() => router.push(`/info/${sec.id}`)}
-            style={s.card}
-          >
-            <span style={s.icon}>{sec.icon}</span>
-            <span style={s.label}>{lang === 'FR' ? sec.labelFR : sec.labelEN}</span>
-          </button>
-        ))}
+        {SECTIONS.map(sec => {
+          const enabled = infoEnabled(sec.id)
+          // Closed sections: greyed "coming soon" for guests; admins can still open them.
+          const locked = !enabled && !isAdmin
+          return (
+            <button
+              key={sec.id}
+              onClick={() => !locked && router.push(`/info/${sec.id}`)}
+              disabled={locked}
+              aria-disabled={locked || undefined}
+              style={{ ...s.card, ...(enabled ? {} : s.cardOff) }}
+            >
+              <span style={s.icon}>{sec.icon}</span>
+              <span style={s.label}>{lang === 'FR' ? sec.labelFR : sec.labelEN}</span>
+              {!enabled && <span style={s.tag}>{isAdmin ? t.hiddenAdmin : t.soon}</span>}
+            </button>
+          )
+        })}
       </div>
     </main>
   )
@@ -58,6 +70,8 @@ const s = {
     background: '#f5f5f5', border: 'none', cursor: 'pointer',
     textAlign: 'center',
   },
+  cardOff: { opacity: 0.5, cursor: 'default' },
+  tag:   { fontSize: '0.7rem', fontStyle: 'italic', color: '#777' },
   icon:  { fontSize: '1.75rem' },
   label: { fontSize: '0.9rem', fontWeight: 600, color: '#222' },
 }

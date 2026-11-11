@@ -8,6 +8,7 @@ import useAdmin from '../../src/hooks/useAdmin'
 import { useAuth } from '../../src/context/AuthContext'
 import useRoom from '../../src/hooks/useRoom'
 import DomainMap from '../../src/components/DomainMap'
+import useSections from '../../src/hooks/useSections'
 import InfoEditor from '../../src/components/InfoEditor'
 import strings from '../../src/i18n/info'
 
@@ -21,16 +22,20 @@ export function getStaticProps({ params }) {
   return { props: { sectionId: params.section } }
 }
 
-// Invitation-only blocks appended to a section. The security rules refuse the
-// read for non-invited guests, and the block then renders nothing at all.
-const RESTRICTED_BLOCKS = {
-  schedule: [{ docId: 'schedule-friday', titleKey: 'fridayTitle' }],
+// Sections with an invitation-only FULL alternative version. A guest who can
+// read the variant doc (security rules: Friday invitees only) sees it INSTEAD
+// of the standard one; everyone else gets the standard doc. Admins get tabs to
+// preview/edit both.
+const VARIANTS = {
+  schedule: { docId: 'schedule-friday', tabKey: 'variantFriday' },
 }
 
 export default function SectionPage({ sectionId }) {
   const router = useRouter()
   const [lang, setLang] = useState('FR')
   const { isAdmin } = useAdmin()
+  const { infoEnabled, loading: sectionsLoading } = useSections()
+  const enabled = infoEnabled(sectionId)
   const t = strings[lang]
 
   const meta = SECTIONS.find(s => s.id === sectionId)
@@ -51,50 +56,90 @@ export default function SectionPage({ sectionId }) {
 
       <h1 style={{ ...s.title, marginBottom: '1.25rem' }}>{meta?.icon} {title}</h1>
 
-      {sectionId === 'accommodation' && <AccommodationMap lang={lang} />}
+      {sectionsLoading ? null : !enabled && !isAdmin ? (
+        <div style={s.soon}>
+          <p style={s.soonTitle}>{t.soon}</p>
+          <p style={s.muted}>{t.soonText}</p>
+        </div>
+      ) : (
+        <>
+          {!enabled && <p style={s.adminClosed}>🔒 {t.adminClosed}</p>}
 
-      {/* key={lang}: switching language discards an in-progress edit */}
-      <EditableBlock key={`${sectionId}-${lang}`} docId={sectionId} lang={lang} isAdmin={isAdmin} t={t} />
+          {sectionId === 'accommodation' && <AccommodationMap lang={lang} />}
 
-      {(RESTRICTED_BLOCKS[sectionId] ?? []).map(block => (
-        <RestrictedBlock key={`${block.docId}-${lang}`} {...block} lang={lang} isAdmin={isAdmin} t={t} />
-      ))}
+          {VARIANTS[sectionId] ? (
+            <VariantContent sectionId={sectionId} variant={VARIANTS[sectionId]} lang={lang} isAdmin={isAdmin} t={t} />
+          ) : (
+            /* key={lang}: switching language discards an in-progress edit */
+            <EditableBlock key={`${sectionId}-${lang}`} docId={sectionId} lang={lang} isAdmin={isAdmin} t={t} />
+          )}
+        </>
+      )}
     </main>
   )
 }
 
 // Plan of the domain; for a signed-in guest with a room, their building is
 // highlighted and their room is summarised above the plan.
+// Rooms switch (admin) off → guests see a "coming soon" note and no highlight;
+// admins still see their room, tagged as hidden from guests.
 function AccommodationMap({ lang }) {
   const { person } = useAuth()
-  const { room } = useRoom(person?.roomId ?? null)
+  const { isAdmin } = useAdmin()
+  const { roomsVisible } = useSections()
+  const { room: myRoom } = useRoom(person?.roomId ?? null)
   const t = strings[lang]
+  const room = roomsVisible || isAdmin ? myRoom : null
   return (
     <>
-      {room && (
+      {room ? (
         <div style={s.myRoom}>
+          {!roomsVisible && <p style={s.adminClosed}>🔒 {t.roomsHiddenAdmin}</p>}
           <p style={s.myRoomLabel}>{t.myRoom}</p>
           <p style={s.myRoomName}>{room.chambre}</p>
           <p style={s.myRoomMeta}>{room.batiment} · {room.niveau}</p>
         </div>
-      )}
+      ) : myRoom && !roomsVisible ? (
+        <div style={s.myRoom}>
+          <p style={s.myRoomLabel}>{t.myRoom}</p>
+          <p style={s.myRoomMeta}>{t.roomSoon}</p>
+        </div>
+      ) : null}
       <DomainMap highlight={room?.batiment ?? null} lang={lang} />
     </>
   )
 }
 
-function RestrictedBlock({ docId, titleKey, lang, isAdmin, t }) {
+function VariantContent({ sectionId, variant, lang, isAdmin, t }) {
   const { user } = useAuth()
-  const { data, loading } = useInfoSection(docId, user?.uid ?? null)
-  // Hidden while loading, and entirely absent when the read was refused (null).
-  // Admins still see an empty block so they can write its first version.
-  if (loading || (data === null && !isAdmin)) return null
-  return (
-    <section style={s.restricted}>
-      <h2 style={s.restrictedTitle}>{t[titleKey]}</h2>
-      <EditableBlock docId={docId} lang={lang} isAdmin={isAdmin} t={t} preloaded={{ data, loading }} />
-    </section>
-  )
+  // null when the rules refuse the read (not invited) or the doc doesn't exist.
+  const variantDoc = useInfoSection(variant.docId, user?.uid ?? null)
+  const [tab, setTab] = useState('standard')
+
+  if (variantDoc.loading) return <p style={s.muted}>{t.loading}</p>
+
+  if (isAdmin) {
+    const docId = tab === 'standard' ? sectionId : variant.docId
+    return (
+      <>
+        <div style={s.tabs} role="tablist">
+          {[['standard', t.variantStandard], ['variant', t[variant.tabKey]]].map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+              style={{ ...s.tab, ...(tab === key ? s.tabActive : {}) }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p style={s.tabHint}>{tab === 'standard' ? t.variantStandardHint : t.variantFridayHint}</p>
+        <EditableBlock key={`${docId}-${lang}`} docId={docId} lang={lang} isAdmin t={t} />
+      </>
+    )
+  }
+
+  // Invited guest → the variant only; everyone else → the standard version.
+  return variantDoc.data
+    ? <EditableBlock key={`${variant.docId}-${lang}`} docId={variant.docId} lang={lang} isAdmin={false} t={t} preloaded={variantDoc} />
+    : <EditableBlock key={`${sectionId}-${lang}`} docId={sectionId} lang={lang} isAdmin={false} t={t} />
 }
 
 function EditableBlock({ docId, lang, isAdmin, t, preloaded }) {
@@ -179,12 +224,17 @@ const s = {
   editBtn: { padding: '0.35rem 0.75rem', borderRadius: '0.4rem', border: '1.5px solid #ddd', background: 'none', fontSize: '0.8rem', cursor: 'pointer', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 },
   muted:   { color: '#aaa', fontSize: '0.9rem' },
   editRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' },
+  soon:      { textAlign: 'center', background: '#f5f5f5', borderRadius: '0.75rem', padding: '2rem 1.25rem' },
+  soonTitle: { fontSize: '1.1rem', fontWeight: 700, margin: '0 0 0.25rem' },
+  adminClosed: { fontSize: '0.8rem', color: '#856404', background: '#fff3cd', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', margin: '0 0 1rem' },
   myRoom:      { background: '#E8A0201f', border: '1.5px solid #E8A020', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '0.75rem' },
   myRoomLabel: { margin: 0, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8a5a00' },
   myRoomName:  { margin: '0.15rem 0 0', fontSize: '1.1rem', fontWeight: 700 },
   myRoomMeta:  { margin: '0.1rem 0 0', fontSize: '0.85rem', color: '#666' },
-  restricted:      { marginTop: '2rem', paddingTop: '1.25rem', borderTop: '1px solid #eee' },
-  restrictedTitle: { fontSize: '1.15rem', fontWeight: 700, margin: '0 0 0.75rem' },
+  tabs:    { display: 'flex', gap: '0.25rem', background: '#f0f0f0', borderRadius: '0.6rem', padding: '0.25rem', marginBottom: '0.5rem' },
+  tab:     { flex: 1, padding: '0.5rem 0.4rem', border: 'none', borderRadius: '0.45rem', background: 'transparent', fontSize: '0.82rem', fontWeight: 600, color: '#666', cursor: 'pointer' },
+  tabActive: { background: '#fff', color: '#1a1a1a', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' },
+  tabHint: { fontSize: '0.75rem', color: '#888', margin: '0 0 1rem' },
 
   // Edit mode banner
   editorBanner: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff3cd', borderRadius: '0.5rem', padding: '0.6rem 0.875rem', marginBottom: '1rem' },
