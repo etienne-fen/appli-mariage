@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import ProtectedRoute from '../../src/components/ProtectedRoute'
 import useAdmin from '../../src/hooks/useAdmin'
 import useSections, { MENU_TARGET_DATE, setInfoEnabled, setMenuEnabled, setRoomsVisible } from '../../src/hooks/useSections'
 import { SECTIONS } from '../../src/lib/seedInfo'
+import {
+  CLIENT_ID, albumInfo, loadGoogleSignIn, pendingPhotos, requestGoogleToken, syncToGooglePhotos,
+} from '../../src/lib/googlePhotos'
 
 // Admin switches: open/close the Menu and each "Infos mariage" page.
 // A closed section stays visible to guests, greyed out as "Bientôt disponible".
@@ -71,8 +74,72 @@ function Settings() {
         />
       ))}
 
+      <h2 style={s.h2}>Google Photos</h2>
+      <GooglePhotosSync />
+
       {error && <p style={s.err}>{error}</p>}
     </main>
+  )
+}
+
+// Copies the shared photos not sent yet into the admin's Google Photos album.
+function GooglePhotosSync() {
+  const [pending, setPending] = useState(null)   // number of photos to send
+  const [albumUrl, setAlbumUrl] = useState(null)
+  const [ready, setReady] = useState(false)      // Google sign-in script loaded
+  const [progress, setProgress] = useState(null) // { done, total, failed }
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const refresh = () => Promise.all([pendingPhotos(), albumInfo()])
+    .then(([todo, album]) => { setPending(todo.length); setAlbumUrl(album?.albumUrl || null) })
+    .catch(e => setError(e.message))
+
+  useEffect(() => {
+    refresh()
+    if (CLIENT_ID) loadGoogleSignIn().then(() => setReady(true), e => setError(e.message))
+  }, [])
+
+  async function send() {
+    setError(null); setResult(null)
+    try {
+      const token = await requestGoogleToken() // popup: must stay first in the click handler
+      const res = await syncToGooglePhotos(token, setProgress)
+      setResult(res)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setProgress(null)
+      refresh()
+    }
+  }
+
+  const busy = !!progress
+  return (
+    <div style={s.gp}>
+      <p style={s.label}>📸 Album « photos des invités »</p>
+      <p style={s.hint}>
+        {pending === null ? 'Chargement…'
+          : pending === 0 ? 'Toutes les photos partagées sont déjà dans l’album.'
+          : `${pending} photo${pending > 1 ? 's' : ''} partagée${pending > 1 ? 's' : ''} pas encore envoyée${pending > 1 ? 's' : ''}.`}
+        {' '}Les photos masquées ne sont pas envoyées. Une fenêtre Google s’ouvre : connectez-vous avec le compte qui possède l’album.
+      </p>
+      {!CLIENT_ID
+        ? <p style={s.err}>Identifiant Google manquant (NEXT_PUBLIC_GOOGLE_PHOTOS_CLIENT_ID).</p>
+        : (
+          <button onClick={send} disabled={!ready || busy || !pending} style={{ ...s.gpBtn, opacity: !ready || busy || !pending ? 0.5 : 1 }}>
+            {busy ? `Envoi… ${progress.done}/${progress.total}` : 'Envoyer vers Google Photos'}
+          </button>
+        )}
+      {result && (
+        <p style={{ ...s.hint, color: result.failed.length ? '#c0392b' : '#27ae60', fontWeight: 600 }}>
+          {result.sent} photo{result.sent > 1 ? 's' : ''} envoyée{result.sent > 1 ? 's' : ''}
+          {result.failed.length ? ` · ${result.failed.length} en échec (${result.failed[0].error})` : ' ✓'}
+        </p>
+      )}
+      {error && <p style={s.err}>{error}</p>}
+      {albumUrl && <a href={albumUrl} target="_blank" rel="noreferrer" style={s.gpLink}>Ouvrir l’album →</a>}
+    </div>
   )
 }
 
@@ -120,4 +187,7 @@ const s = {
   knob:  { display: 'block', width: 20, height: 20, borderRadius: 10, background: '#fff', transition: 'transform 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.3)' },
   muted: { color: '#aaa' },
   err:   { color: '#c0392b', fontSize: '0.85rem', marginTop: '1rem' },
+  gp:    { padding: '0.75rem 0', borderBottom: '1px solid #eee' },
+  gpBtn: { marginTop: '0.75rem', padding: '0.6rem 1rem', borderRadius: '0.75rem', border: 'none', background: '#1E4A2E', color: '#fff', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' },
+  gpLink:{ display: 'inline-block', marginTop: '0.6rem', fontSize: '0.85rem', color: '#1E4A2E', fontWeight: 600 },
 }

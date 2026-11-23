@@ -27,6 +27,9 @@
    - `node scripts/photos-to-google.js` (run by the admin, no Cloud Function) copies approved photos
      into an album of the admin's own Google Photos (for a printed album). Idempotent: marks
      `photos/{id}.googlePhotos`; album id in `settings/googlePhotos`. OAuth client + token in ~/.secrets.
+   - Same sync from the browser: Réglages → "Envoyer vers Google Photos" (src/lib/googlePhotos.js).
+     Google popup via a "Web application" OAuth client (NEXT_PUBLIC_GOOGLE_PHOTOS_CLIENT_ID, same
+     Cloud project so the album stays writable); needs the bucket CORS from `scripts/storage-cors.js`.
 4. Admin tools (secure)
    - Admin-only dashboard to manage guests, send notices (outside app), and moderate uploads
 5. Offline / PWA polish
