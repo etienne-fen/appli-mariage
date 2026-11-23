@@ -2,6 +2,7 @@ import { useState } from 'react'
 import useLang from '../src/context/LangContext'
 import { useRouter } from 'next/router'
 import ProtectedRoute from '../src/components/ProtectedRoute'
+import Carpool from '../src/components/Carpool'
 
 // ── Venue — update these three constants ─────────────────────────────────────
 const VENUE_NAME    = 'Le Domaine du Possible'
@@ -18,6 +19,8 @@ const strings = {
     copied:     'Copié !',
     openIn:     'Ouvrir dans…',
     back:       'Retour',
+    tabVenue:   'Venir au Domaine',
+    tabCarpool: 'Covoiturage',
   },
   EN: {
     title:      'Getting there',
@@ -26,6 +29,8 @@ const strings = {
     copied:     'Copied!',
     openIn:     'Open in…',
     back:       'Back',
+    tabVenue:   'Getting to the Domaine',
+    tabCarpool: 'Carpooling',
   },
 }
 
@@ -42,6 +47,9 @@ function Directions() {
   const [lang, setLang] = useLang()
   const [copied, setCopied] = useState(false)
   const t = strings[lang]
+  // ?tab=covoiturage keeps the tab on reload and makes it linkable
+  const tab = router.query.tab === 'covoiturage' ? 'covoiturage' : 'venue'
+  const setTab = key => router.replace({ query: key === 'venue' ? {} : { tab: key } }, undefined, { shallow: true })
 
   const query      = `${VENUE_LAT},${VENUE_LNG}`
   const googleUrl  = `https://maps.google.com/?q=${query}`
@@ -71,6 +79,24 @@ function Directions() {
 
       <h1 style={s.title}>📍 {t.title}</h1>
 
+      <div style={s.tabs} role="tablist">
+        {[['venue', t.tabVenue], ['covoiturage', t.tabCarpool]].map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+            style={{ ...s.tab, ...(tab === key ? s.tabActive : {}) }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'covoiturage' ? <Carpool lang={lang} /> : <Venue t={t} copied={copied} copyAddress={copyAddress}
+        googleUrl={googleUrl} wazeUrl={wazeUrl} appleUrl={appleUrl} />}
+    </main>
+  )
+}
+
+function Venue({ t, copied, copyAddress, googleUrl, wazeUrl, appleUrl }) {
+  return (
+    <>
       {/* Address card */}
       <div style={s.card}>
         <p style={s.venueName}>{VENUE_NAME}</p>
@@ -96,7 +122,7 @@ function Directions() {
           <span style={s.navLabel}>Apple Maps</span>
         </a>
       </div>
-    </main>
+    </>
   )
 }
 
@@ -108,6 +134,9 @@ const s = {
   backBtn:    { background: 'none', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#555', padding: 0 },
   langBtn:    { background: 'none', border: '1px solid #ddd', borderRadius: '0.25rem', padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#666' },
   title:      { fontSize: '1.5rem', fontWeight: 700, margin: '0 0 1.25rem' },
+  tabs:       { display: 'flex', gap: '0.25rem', background: '#ffffff99', borderRadius: '0.6rem', padding: '0.25rem', marginBottom: '1.25rem' },
+  tab:        { flex: 1, padding: '0.55rem 0.4rem', border: 'none', borderRadius: '0.45rem', background: 'transparent', fontSize: '0.88rem', fontWeight: 600, color: '#666', cursor: 'pointer' },
+  tabActive:  { background: '#fff', color: '#1a1a1a', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' },
 
   card:       { background: '#fff', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' },
   venueName:  { fontWeight: 700, fontSize: '1rem', margin: '0 0 0.4rem' },

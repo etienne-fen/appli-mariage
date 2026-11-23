@@ -120,7 +120,20 @@ settings/sections               — admin switches (public read): { menu: bool, 
                                   Off = guests see the entry greyed "Bientôt disponible"; admins still open it.
                                   Menu defaults to OFF (opens ~2 months before the wedding). UI: /admin/settings
 
-photos/{photoId}                — storagePath + guestId + eventId + status (pending/approved/rejected)
+carpool/{adId}                  — covoiturage ads ("Comment venir" → tab Covoiturage, /directions?tab=covoiturage)
+  direction: "to" | "back"      — "Aller" (place → Domaine) / "Retour" (Domaine → place)
+  type: "offer" | "request"     — "Place dispo" / "Recherche une place"
+  place, date ("YYYY-MM-DD"), time ("HH:MM"), seats (offer: free seats; request: passengers.length)
+  passengers: personId[], passengerNames: string[] — request only: household members needing a ride
+  details: string, phoneConsent: true (required by rules)
+  authorUid, authorPersonId, authorHouseholdId, authorName, authorPhone — revealed on "Ça m'intéresse"
+  active: bool                  — author can only toggle this ("Désactiver"); guests list active ads
+                                  + their own (where authorUid ==). Limits in src/lib/carpool.js ↔ rules
+
+photos/{photoId}                — storagePath + guestId + status (approved/hidden) + createdAt
+                                  + thumbPath/URL (600px, grid) + mediumPath/URL (1600px, full screen; the
+                                  original is never shown in-app, only exported). Files: cacheControl 1 year.
+                                  Gallery paginated by createdAt (src/hooks/usePhotos.js, no index needed)
 notes/{noteId}                  — guestbook entries; guestId + content + createdAt
 ```
 

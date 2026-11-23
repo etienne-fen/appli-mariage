@@ -143,6 +143,43 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Carpooling ads ("Comment venir" → Covoiturage). The author's name + phone
+    // are stored on the ad with their explicit consent (phoneConsent). Guests
+    // list active ads, or their own (query on authorUid). The author may only
+    // switch `active` on/off; admins can moderate. Limits: src/lib/carpool.js.
+    match /carpool/{adId} {
+      function validAd(d) {
+        return d.keys().hasOnly(['direction', 'type', 'place', 'date', 'time', 'seats', 'passengers', 'passengerNames',
+                                 'details', 'phoneConsent', 'authorUid', 'authorPersonId', 'authorHouseholdId',
+                                 'authorName', 'authorPhone', 'active', 'createdAt'])
+          && d.direction in ['to', 'back']
+          && d.type in ['offer', 'request']
+          && d.place is string && d.place.size() > 0 && d.place.size() <= 80
+          && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && d.time is string && d.time.matches('^[0-9]{2}:[0-9]{2}$')
+          && d.seats is int && d.seats >= 1 && d.seats <= 8
+          && d.passengers is list && d.passengers.size() <= 8
+          && d.passengerNames is list && d.passengerNames.size() <= 8
+          && d.details is string && d.details.size() <= 1000
+          && d.phoneConsent == true
+          && d.authorName is string && d.authorName.size() <= 120
+          && d.active == true;
+      }
+
+      allow read: if isAdmin()
+        || (isSignedIn() && (resource.data.active == true || resource.data.authorUid == request.auth.uid));
+      allow create: if isSignedIn()
+        && validAd(request.resource.data)
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorPhone == request.auth.token.phone_number
+        && get(/databases/$(database)/documents/persons/$(request.resource.data.authorPersonId)).data.phone
+           == request.auth.token.phone_number;
+      allow update: if (isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active', 'updatedAt'])
+        && request.resource.data.active is bool;
+      allow delete: if isAdmin();
+    }
+
     match /notes/{noteId} {
       // Guestbook-style notes visible to all signed-in guests
       allow read: if isSignedIn();

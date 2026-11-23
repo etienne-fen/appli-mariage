@@ -81,27 +81,42 @@ const strings = {
 }
 
 const MAX_BYTES = 20 * 1024 * 1024 // keep in sync with storage.rules
-const THUMB_SIZE = 600              // px, longest side
+const THUMB_SIZE  = 600             // px, longest side — gallery grid
+const MEDIUM_SIZE = 1600            // px, longest side — full-screen view
+// Uploaded files never change (storage.rules: no update), so browsers may keep them a year.
+const CACHE = 'public, max-age=31536000, immutable'
 
-// Builds a small JPEG preview in the browser and uploads it next to the
-// original. Returns { path, url }, or null if the format can't be decoded
-// (the gallery then falls back to the original).
-async function uploadThumbnail(file, path) {
+// Builds a resized JPEG copy in the browser and uploads it next to the
+// original. Returns { path, url }, or null if it fails (the gallery then
+// falls back to the original).
+async function uploadResized(bitmap, path, maxSide, quality) {
   try {
-    const bitmap = await createImageBitmap(file)
-    const scale  = Math.min(1, THUMB_SIZE / Math.max(bitmap.width, bitmap.height))
+    const scale  = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
     const canvas = document.createElement('canvas')
     canvas.width  = Math.round(bitmap.width * scale)
     canvas.height = Math.round(bitmap.height * scale)
     canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    bitmap.close?.()
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8))
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality))
     if (!blob) return null
     const r = ref(storage, path)
-    await uploadBytes(r, blob, { contentType: 'image/jpeg' })
+    await uploadBytes(r, blob, { contentType: 'image/jpeg', cacheControl: CACHE })
     return { path, url: await getDownloadURL(r) }
   } catch {
     return null
+  }
+}
+
+// Thumbnail (grid) + medium (full-screen) copies. Both null if the format
+// can't be decoded by the browser.
+async function uploadCopies(file, base) {
+  let bitmap
+  try { bitmap = await createImageBitmap(file) } catch { return { thumb: null, medium: null } }
+  try {
+    const thumb  = await uploadResized(bitmap, `${base}_thumb.jpg`, THUMB_SIZE, 0.8)
+    const medium = await uploadResized(bitmap, `${base}_medium.jpg`, MEDIUM_SIZE, 0.85)
+    return { thumb, medium }
+  } finally {
+    bitmap.close?.()
   }
 }
 
@@ -125,7 +140,23 @@ function Photos() {
   const fileRef = useRef(null)
   const t = strings[lang]
 
-  const { photos, loading }       = usePhotos(isAdmin)
+  const { photos, loading, loadingMore, hasMore, loadMore, patchLocal } = usePhotos(isAdmin)
+  const sentinelRef = useRef(null)
+  const [nearEnd, setNearEnd] = useState(false)
+
+  // Infinite scroll: load the next page when the end of the grid comes near.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(([entry]) => setNearEnd(entry.isIntersecting), { rootMargin: '800px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [loading])
+  // Re-checked after each page: keeps loading while the end is still in view
+  // (e.g. a page made only of hidden photos).
+  useEffect(() => {
+    if (nearEnd && hasMore && !loadingMore) loadMore()
+  }, [nearEnd, hasMore, loadingMore, loadMore])
   const { settings, loading: sl } = usePhotoSettings()
 
   // Resolve whether guests may currently upload
@@ -163,9 +194,10 @@ function Photos() {
     const stamp    = Date.now()
     const ext      = file.name.split('.').pop() || 'jpg'
     const storPath = `photos/${user.uid}/${stamp}.${ext}`
-    // Small preview for the gallery grid (keeps it fast with hundreds of photos).
-    const thumb    = await uploadThumbnail(file, `photos/${user.uid}/${stamp}_thumb.jpg`)
-    const task     = uploadBytesResumable(ref(storage, storPath), file)
+    // Small preview for the grid + medium copy for full-screen viewing (keeps
+    // the gallery fast; the original is only for the couple's album).
+    const { thumb, medium } = await uploadCopies(file, `photos/${user.uid}/${stamp}`)
+    const task     = uploadBytesResumable(ref(storage, storPath), file, { contentType: file.type, cacheControl: CACHE })
 
     task.on(
       'state_changed',
@@ -178,6 +210,7 @@ function Photos() {
             guestId: user.uid, storagePath: storPath,
             downloadURL, status: 'approved',
             ...(thumb && { thumbPath: thumb.path, thumbURL: thumb.url }),
+            ...(medium && { mediumPath: medium.path, mediumURL: medium.url }),
             createdAt: serverTimestamp(),
           })
         } catch { setError(t.error) }
@@ -189,18 +222,20 @@ function Photos() {
   // ── Admin actions ───────────────────────────────────────────────────────────
 
   const handleHide = useCallback(async (photo) => {
-    await updateDoc(doc(firestore, 'photos', photo.id), {
-      status: photo.status === 'hidden' ? 'approved' : 'hidden',
-    })
-  }, [])
+    const status = photo.status === 'hidden' ? 'approved' : 'hidden'
+    await updateDoc(doc(firestore, 'photos', photo.id), { status })
+    patchLocal(photo.id, { status })
+  }, [patchLocal])
 
   const handleDelete = useCallback(async (photo) => {
     if (!window.confirm(t.confirmDel)) return
     await deleteDoc(doc(firestore, 'photos', photo.id))
-    try { await deleteObject(ref(storage, photo.storagePath)) } catch {}
-    if (photo.thumbPath) try { await deleteObject(ref(storage, photo.thumbPath)) } catch {}
+    patchLocal(photo.id, null)
+    for (const path of [photo.storagePath, photo.thumbPath, photo.mediumPath].filter(Boolean)) {
+      try { await deleteObject(ref(storage, path)) } catch {}
+    }
     if (lightbox?.id === photo.id) setLightbox(null)
-  }, [lightbox, t.confirmDel])
+  }, [lightbox, t.confirmDel, patchLocal])
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -278,13 +313,16 @@ function Photos() {
           ))}
         </div>
       )}
+      {/* Infinite-scroll trigger */}
+      {!loading && <div ref={sentinelRef} style={{ height: 1 }} />}
+      {loadingMore && <p style={s.loadingMore}>…</p>}
 
-      {/* Lightbox */}
+      {/* Lightbox — medium copy (≈1600 px); the thumbnail shows while it loads.
+          Older photos without one fall back to the original. */}
       {lightbox && (
         <div style={s.overlay} onClick={() => setLightbox(null)}>
           <button style={s.closeBtn} onClick={() => setLightbox(null)}>✕</button>
-          <img src={lightbox.downloadURL} alt="" style={s.lightboxImg}
-            onClick={e => e.stopPropagation()} />
+          <LightboxImage key={lightbox.id} photo={lightbox} />
         </div>
       )}
     </main>
@@ -351,6 +389,24 @@ function AdminSettings({ settings, t }) {
   )
 }
 
+// ── Full-screen image ─────────────────────────────────────────────────────────
+
+// Shows the (already cached) thumbnail at once, then swaps in the medium copy
+// when it has loaded. Older photos without a medium copy use the original.
+function LightboxImage({ photo }) {
+  const full = photo.mediumURL || photo.downloadURL
+  const [ready, setReady] = useState(!photo.thumbURL)
+  return (
+    <>
+      {!ready && <img src={photo.thumbURL} alt="" style={{ ...s.lightboxImg, width: '100%', filter: 'blur(2px)' }}
+        onClick={e => e.stopPropagation()} />}
+      <img src={full} alt="" onLoad={() => setReady(true)}
+        style={ready ? s.lightboxImg : { display: 'none' }}
+        onClick={e => e.stopPropagation()} />
+    </>
+  )
+}
+
 // ── Photo card ────────────────────────────────────────────────────────────────
 
 function PhotoCard({ photo, isAdmin, t, onOpen, onHide, onDelete }) {
@@ -396,6 +452,7 @@ const s = {
   adminBtn:     { background: 'none', border: 'none', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 600, color: '#333', padding: '0.1rem 0.15rem' },
   overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' },
   closeBtn:     { position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.75rem', cursor: 'pointer', lineHeight: 1, zIndex: 1001 },
+  loadingMore:  { textAlign: 'center', color: '#aaa', fontSize: '1.25rem', margin: '1rem 0' },
   lightboxImg:  { maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: '0.5rem' },
 }
 
