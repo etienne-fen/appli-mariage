@@ -12,6 +12,7 @@ import useAdmin from '../src/hooks/useAdmin'
 import usePhotos from '../src/hooks/usePhotos'
 import usePhotoSettings from '../src/hooks/usePhotoSettings'
 import ProtectedRoute from '../src/components/ProtectedRoute'
+import { isImage, toJpeg } from '../src/lib/imageToJpeg'
 
 const strings = {
   FR: {
@@ -46,6 +47,7 @@ const strings = {
     ],
     tooBig:       'Cette photo dépasse 20 Mo. Choisissez-en une plus légère.',
     notImage:     'Seules les photos sont acceptées (pas de vidéos).',
+    convertError: 'Impossible de lire cette photo. Essayez-en une autre ou faites une capture d’écran.',
   },
   EN: {
     title:        'Photos',
@@ -77,6 +79,7 @@ const strings = {
     ],
     tooBig:       'This photo is larger than 20 MB. Please choose a lighter one.',
     notImage:     'Only photos are accepted (no videos).',
+    convertError: 'This photo can’t be read. Try another one, or take a screenshot of it.',
   },
 }
 
@@ -187,17 +190,22 @@ function Photos() {
     e.target.value = ''
     setError('')
     // Same limits as storage.rules — tell the guest instead of failing silently.
-    if (!file.type.startsWith('image/')) return setError(t.notImage)
+    if (!isImage(file)) return setError(t.notImage)
     if (file.size > MAX_BYTES) return setError(t.tooBig)
     setProgress(0)
 
+    // Always store JPEG (HEIC etc. converted in the browser).
+    let jpeg
+    try { jpeg = await toJpeg(file) }
+    catch (err) { console.error('photos: JPEG conversion failed', err); setProgress(null); return setError(t.convertError) }
+    if (jpeg.size > MAX_BYTES) { setProgress(null); return setError(t.tooBig) }
+
     const stamp    = Date.now()
-    const ext      = file.name.split('.').pop() || 'jpg'
-    const storPath = `photos/${user.uid}/${stamp}.${ext}`
+    const storPath = `photos/${user.uid}/${stamp}.jpg`
     // Small preview for the grid + medium copy for full-screen viewing (keeps
     // the gallery fast; the original is only for the couple's album).
-    const { thumb, medium } = await uploadCopies(file, `photos/${user.uid}/${stamp}`)
-    const task     = uploadBytesResumable(ref(storage, storPath), file, { contentType: file.type, cacheControl: CACHE })
+    const { thumb, medium } = await uploadCopies(jpeg, `photos/${user.uid}/${stamp}`)
+    const task     = uploadBytesResumable(ref(storage, storPath), jpeg, { contentType: 'image/jpeg', cacheControl: CACHE })
 
     task.on(
       'state_changed',
@@ -260,7 +268,7 @@ function Photos() {
         </div>
       </nav>
 
-      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" style={{ display: 'none' }} onChange={handleFileChange} />
 
       <h1 style={s.title}>📸 {t.title}</h1>
 

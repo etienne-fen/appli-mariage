@@ -29,6 +29,9 @@ function Settings() {
     <main style={s.main}>
       <button onClick={() => router.push('/dashboard')} style={s.back}>← Retour</button>
       <h1 style={s.h1}>Réglages</h1>
+      <button onClick={() => router.push('/admin/contacts')} style={s.contactsBtn}>
+        📱 Contacts WhatsApp — copier les numéros d’une sélection d’invités →
+      </button>
       <p style={s.intro}>
         Une section désactivée reste visible pour les invités, grisée avec la mention
         « Bientôt disponible ». Les admins peuvent toujours l’ouvrir.
@@ -106,6 +109,7 @@ const s = {
   back:  { background: 'none', border: 'none', cursor: 'pointer', color: '#555', marginBottom: '1.25rem', padding: 0, fontSize: '0.9rem' },
   h1:    { fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.25rem' },
   intro: { fontSize: '0.85rem', color: '#888', margin: '0 0 1.5rem' },
+  contactsBtn: { display: 'block', width: '100%', textAlign: 'left', margin: '0.75rem 0 1rem', padding: '0.75rem 0.9rem', borderRadius: '0.75rem', border: '1px solid #cfe3d6', background: '#fff', color: '#1E4A2E', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' },
   h2:    { fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#1E4A2E', margin: '1.5rem 0 0.5rem' },
   row:   { display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0', borderBottom: '1px solid #eee' },
   icon:  { fontSize: '1.4rem' },

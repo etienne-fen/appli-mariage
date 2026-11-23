@@ -250,7 +250,9 @@ function Summary({ events, members, rsvpMap, lang, t }) {
         <tbody>
           {events.map(event => (
             <tr key={event.id}>
-              <td style={s.tdEvent}>{event.title[lang]}</td>
+              <td style={s.tdEvent}>
+                {event.dayKey && t.days[event.dayKey] ? `${t.days[event.dayKey]} - ` : ''}{event.title[lang]}
+              </td>
               {members.map(m => {
                 const val = (rsvpMap[event.id] ?? {})[m.memberId] ?? null
                 return (
