@@ -5,7 +5,7 @@ import {
   collection, addDoc, deleteDoc, updateDoc,
   doc, setDoc, serverTimestamp, Timestamp,
 } from 'firebase/firestore'
-import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
 import { firestore, storage } from '../src/firebase/firebaseClient'
 import { useAuth } from '../src/context/AuthContext'
 import useAdmin from '../src/hooks/useAdmin'
@@ -89,38 +89,42 @@ const MEDIUM_SIZE = 1600            // px, longest side — full-screen view
 // Uploaded files never change (storage.rules: no update), so browsers may keep them a year.
 const CACHE = 'public, max-age=31536000, immutable'
 
-// Builds a resized JPEG copy in the browser and uploads it next to the
-// original. Returns { path, url }, or null if it fails (the gallery then
-// falls back to the original).
-async function uploadResized(bitmap, path, maxSide, quality) {
-  try {
-    const scale  = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
-    const canvas = document.createElement('canvas')
-    canvas.width  = Math.round(bitmap.width * scale)
-    canvas.height = Math.round(bitmap.height * scale)
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality))
-    if (!blob) return null
-    const r = ref(storage, path)
-    await uploadBytes(r, blob, { contentType: 'image/jpeg', cacheControl: CACHE })
-    return { path, url: await getDownloadURL(r) }
-  } catch {
-    return null
-  }
+// Resized JPEG copy of the bitmap, or null when the photo is already that
+// small (the original is then used instead: a re-encoded copy of a small
+// photo would only be bigger).
+async function resized(bitmap, maxSide, quality) {
+  if (Math.max(bitmap.width, bitmap.height) <= maxSide) return null
+  const scale  = maxSide / Math.max(bitmap.width, bitmap.height)
+  const canvas = document.createElement('canvas')
+  canvas.width  = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  return new Promise(r => canvas.toBlob(r, 'image/jpeg', quality))
 }
 
-// Thumbnail (grid) + medium (full-screen) copies. Both null if the format
-// can't be decoded by the browser.
-async function uploadCopies(file, base) {
+// Thumbnail (grid) + medium (full-screen) blobs, decoded once. Both null if
+// the browser can't decode the format.
+async function makeCopies(file) {
   let bitmap
   try { bitmap = await createImageBitmap(file) } catch { return { thumb: null, medium: null } }
   try {
-    const thumb  = await uploadResized(bitmap, `${base}_thumb.jpg`, THUMB_SIZE, 0.8)
-    const medium = await uploadResized(bitmap, `${base}_medium.jpg`, MEDIUM_SIZE, 0.85)
+    const [thumb, medium] = await Promise.all([
+      resized(bitmap, THUMB_SIZE, 0.8).catch(() => null),
+      resized(bitmap, MEDIUM_SIZE, 0.85).catch(() => null),
+    ])
     return { thumb, medium }
   } finally {
     bitmap.close?.()
   }
+}
+
+// Upload with byte progress; resolves { path, url }.
+function put(path, blob, onBytes) {
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(ref(storage, path), blob, { contentType: 'image/jpeg', cacheControl: CACHE })
+    task.on('state_changed', snap => onBytes(snap.bytesTransferred), reject,
+      () => getDownloadURL(task.snapshot.ref).then(url => resolve({ path, url }), reject))
+  })
 }
 
 export default function PhotosPage() {
@@ -138,8 +142,9 @@ function Photos() {
   const [lang, setLang]         = useLang()
   const [progress, setProgress] = useState(null)
   const [error, setError]       = useState('')
-  const [lightbox, setLightbox] = useState(null)
+  const [openId, setOpenId]     = useState(null) // photo shown full screen
   const [adminTab, setAdminTab] = useState('all')
+  const [preview, setPreview]   = useState(null) // local URL of the photo being uploaded
   const fileRef = useRef(null)
   const t = strings[lang]
 
@@ -200,31 +205,46 @@ function Photos() {
     catch (err) { console.error('photos: JPEG conversion failed', err); setProgress(null); return setError(t.convertError) }
     if (jpeg.size > MAX_BYTES) { setProgress(null); return setError(t.tooBig) }
 
-    const stamp    = Date.now()
-    const storPath = `photos/${user.uid}/${stamp}.jpg`
+    const base = `photos/${user.uid}/${Date.now()}`
     // Small preview for the grid + medium copy for full-screen viewing (keeps
     // the gallery fast; the original is only for the couple's album).
-    const { thumb, medium } = await uploadCopies(jpeg, `photos/${user.uid}/${stamp}`)
-    const task     = uploadBytesResumable(ref(storage, storPath), jpeg, { contentType: 'image/jpeg', cacheControl: CACHE })
+    const copies = await makeCopies(jpeg)
+    // Shown in the grid at once, with the progress, while the files upload.
+    const previewUrl = URL.createObjectURL(copies.thumb || jpeg)
+    setPreview(previewUrl)
 
-    task.on(
-      'state_changed',
-      snap => setProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-      ()   => { setError(t.error); setProgress(null) },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(task.snapshot.ref)
-          await addDoc(collection(firestore, 'photos'), {
-            guestId: user.uid, storagePath: storPath,
-            downloadURL, status: 'approved',
-            ...(thumb && { thumbPath: thumb.path, thumbURL: thumb.url }),
-            ...(medium && { mediumPath: medium.path, mediumURL: medium.url }),
-            createdAt: serverTimestamp(),
-          })
-        } catch { setError(t.error) }
-        finally  { setProgress(null) }
-      }
-    )
+    // The three files upload in parallel; one progress bar for all bytes.
+    const files = [['orig', `${base}.jpg`, jpeg]]
+    if (copies.thumb)  files.push(['thumb',  `${base}_thumb.jpg`,  copies.thumb])
+    if (copies.medium) files.push(['medium', `${base}_medium.jpg`, copies.medium])
+    const total = files.reduce((n, [, , b]) => n + b.size, 0)
+    const sent  = {}
+    const onBytes = key => bytes => {
+      sent[key] = bytes
+      setProgress(Math.round(Object.values(sent).reduce((a, b) => a + b, 0) / total * 100))
+    }
+
+    try {
+      const done = await Promise.all(files.map(([key, path, blob]) =>
+        key === 'orig'
+          ? put(path, blob, onBytes(key))
+          : put(path, blob, onBytes(key)).catch(() => null))) // a copy may fail: the original is used instead
+      const [orig, ...rest] = done
+      const got = Object.fromEntries(files.slice(1).map(([key], i) => [key, rest[i]]))
+      await addDoc(collection(firestore, 'photos'), {
+        guestId: user.uid, storagePath: orig.path,
+        downloadURL: orig.url, status: 'approved',
+        ...(got.thumb  && { thumbPath: got.thumb.path,   thumbURL: got.thumb.url }),
+        ...(got.medium && { mediumPath: got.medium.path, mediumURL: got.medium.url }),
+        createdAt: serverTimestamp(),
+      })
+    } catch {
+      setError(t.error)
+    } finally {
+      setProgress(null)
+      setPreview(null)
+      URL.revokeObjectURL(previewUrl)
+    }
   }
 
   // ── Admin actions ───────────────────────────────────────────────────────────
@@ -242,8 +262,8 @@ function Photos() {
     for (const path of [photo.storagePath, photo.thumbPath, photo.mediumPath].filter(Boolean)) {
       try { await deleteObject(ref(storage, path)) } catch {}
     }
-    if (lightbox?.id === photo.id) setLightbox(null)
-  }, [lightbox, t.confirmDel, patchLocal])
+    // If it was open, the viewer moves on by itself (see the openId effect).
+  }, [t.confirmDel, patchLocal])
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -309,12 +329,18 @@ function Photos() {
       )}
 
       {/* Gallery */}
-      {!loading && displayed.length === 0 && <p style={s.empty}>{t.empty}</p>}
-      {displayed.length > 0 && (
+      {!loading && !preview && displayed.length === 0 && <p style={s.empty}>{t.empty}</p>}
+      {(displayed.length > 0 || preview) && (
         <div style={s.grid}>
+          {preview && (
+            <div style={s.cell}>
+              <img src={preview} alt="" style={{ ...s.thumb, opacity: 0.6, cursor: 'default' }} />
+              <span style={s.previewPct}>{progress ?? 0}%</span>
+            </div>
+          )}
           {displayed.map(photo => (
             <PhotoCard key={photo.id} photo={photo} isAdmin={isAdmin} t={t}
-              onOpen={() => setLightbox(photo)}
+              onOpen={() => setOpenId(photo.id)}
               onHide={() => handleHide(photo)}
               onDelete={() => handleDelete(photo)}
             />
@@ -327,11 +353,9 @@ function Photos() {
 
       {/* Lightbox — medium copy (≈1600 px); the thumbnail shows while it loads.
           Older photos without one fall back to the original. */}
-      {lightbox && (
-        <div style={s.overlay} onClick={() => setLightbox(null)}>
-          <button style={s.closeBtn} onClick={() => setLightbox(null)}>✕</button>
-          <LightboxImage key={lightbox.id} photo={lightbox} />
-        </div>
+      {openId && (
+        <Lightbox photos={displayed} openId={openId} setOpenId={setOpenId}
+          hasMore={hasMore} loadingMore={loadingMore} loadMore={loadMore} />
       )}
     </main>
   )
@@ -397,7 +421,119 @@ function AdminSettings({ settings, t }) {
   )
 }
 
-// ── Full-screen image ─────────────────────────────────────────────────────────
+// ── Full-screen viewer ────────────────────────────────────────────────────────
+
+// Previous / next among the photos of the current tab (newest first):
+// swipe on phones, ‹ › buttons and ←/→ keys on computers, Esc or the phone's
+// back button to close.
+function Lightbox({ photos, openId, setOpenId, hasMore, loadingMore, loadMore }) {
+  const router    = useRouter()
+  const index     = photos.findIndex(p => p.id === openId)
+  const lastIndex = useRef(index)
+  const pushed    = useRef(false) // our history entry is on top
+  const touch     = useRef(null)
+  const swiped    = useRef(false)
+
+  // Closing goes through history when our entry is there, so "back" and ✕ agree.
+  const close = useCallback(() => {
+    if (pushed.current) window.history.back() // → popstate below closes
+    else setOpenId(null)
+  }, [setOpenId])
+
+  // Phone back button closes the photo instead of leaving the page: one
+  // history entry while open (same URL). Next's router is told to ignore that
+  // pop. The state check avoids a second entry under React strict mode (dev).
+  useEffect(() => {
+    if (!window.history.state?.lightbox) {
+      window.history.pushState({ ...window.history.state, lightbox: true }, '')
+    }
+    pushed.current = true
+    const onPop = () => {
+      if (!pushed.current) return true
+      pushed.current = false
+      setOpenId(null)
+      return false
+    }
+    router.beforePopState(onPop)
+    window.addEventListener('popstate', onPop) // when Next skips beforePopState
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      router.beforePopState(() => true)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open photo gone (deleted, or hidden while on the "Masquées" tab): show the
+  // one now at its place, or close if none is left.
+  useEffect(() => {
+    if (index !== -1) { lastIndex.current = index; return }
+    const next = photos[Math.min(lastIndex.current, photos.length - 1)]
+    if (next) setOpenId(next.id)
+    else close()
+  }, [index, photos, setOpenId, close])
+
+  // Near the end of what's loaded: fetch the next batch, so swiping never stops early.
+  useEffect(() => {
+    if (index !== -1 && index >= photos.length - 3 && hasMore && !loadingMore) loadMore()
+  }, [index, photos.length, hasMore, loadingMore, loadMore])
+
+  // Preload the neighbours so the next swipe is instant.
+  useEffect(() => {
+    for (const p of [photos[index - 1], photos[index + 1]]) {
+      if (p) new Image().src = p.mediumURL || p.downloadURL
+    }
+  }, [index, photos])
+
+  const go = useCallback(step => {
+    const p = photos[index + step]
+    if (p) setOpenId(p.id)
+  }, [photos, index, setOpenId])
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'ArrowLeft') go(-1)
+      else if (e.key === 'ArrowRight') go(1)
+      else if (e.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [go, close])
+
+  const photo = photos[index]
+  if (!photo) return null
+  const stop = fn => e => { e.stopPropagation(); fn() }
+
+  return (
+    <div
+      style={s.overlay}
+      onClick={() => { if (!swiped.current) close() }}
+      onTouchStart={e => {
+        swiped.current = false
+        const t = e.touches[0]
+        touch.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null // ignore pinch-zoom
+      }}
+      onTouchEnd={e => {
+        const start = touch.current
+        touch.current = null
+        if (!start) return
+        const t = e.changedTouches[0]
+        const dx = t.clientX - start.x, dy = t.clientY - start.y
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) { // horizontal swipe, not a tap
+          swiped.current = true
+          go(dx < 0 ? 1 : -1)
+        }
+      }}
+    >
+      <button style={s.closeBtn} onClick={stop(close)} aria-label="Fermer">✕</button>
+      {index > 0 && (
+        <button style={{ ...s.navBtn, left: '0.5rem' }} onClick={stop(() => go(-1))} aria-label="Photo précédente">‹</button>
+      )}
+      {index < photos.length - 1 && (
+        <button style={{ ...s.navBtn, right: '0.5rem' }} onClick={stop(() => go(1))} aria-label="Photo suivante">›</button>
+      )}
+      <LightboxImage key={photo.id} photo={photo} />
+    </div>
+  )
+}
 
 // Shows the (already cached) thumbnail at once, then swaps in the medium copy
 // when it has loaded. Older photos without a medium copy use the original.
@@ -456,11 +592,13 @@ const s = {
   grid:         { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' },
   cell:         { position: 'relative', borderRadius: '0.625rem', overflow: 'hidden', background: '#f0f0f0', aspectRatio: '1' },
   thumb:        { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' },
+  previewPct:   { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.1rem', textShadow: '0 1px 3px rgba(0,0,0,0.6)' },
   adminBar:     { position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0.4rem', background: 'rgba(255,255,255,0.9)' },
   adminBtn:     { background: 'none', border: 'none', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 600, color: '#333', padding: '0.1rem 0.15rem' },
   overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' },
   closeBtn:     { position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.75rem', cursor: 'pointer', lineHeight: 1, zIndex: 1001 },
   loadingMore:  { textAlign: 'center', color: '#aaa', fontSize: '1.25rem', margin: '1rem 0' },
+  navBtn:       { position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '2.75rem', height: '2.75rem', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '1.9rem', lineHeight: 1, cursor: 'pointer', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBottom: '0.2rem' },
   lightboxImg:  { maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: '0.5rem' },
 }
 
